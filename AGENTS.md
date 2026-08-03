@@ -32,7 +32,8 @@ React Hook Form + Zod, Zustand, Dexie, Supabase, @react-pdf/renderer, Vitest.
 - Kalau ada yang ambigu, tanya dulu. Jangan menebak.
 - Kalau saya minta sesuatu yang bertentangan dengan dokumen, tunjukkan
   bagian mana yang bertentangan sebelum mengerjakannya.
-- shadcn/ui memakai Base UI, BUKAN Radix UI.
+- shadcn/ui di proyek ini memakai Base UI, BUKAN Radix UI.
+- Tailwind v4. Tidak ada tailwind.config.ts. Tema ditulis di app/globals.css lewat @theme inline.
 - Dilarang menulis komponen shadcn dari nol atau dari ingatan.
   Pasang lewat: pnpm dlx shadcn@latest add <nama>
   Kalau perlu memodifikasi, baca dulu file yang sudah ada di
