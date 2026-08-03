@@ -4,15 +4,24 @@ import { useEditorStore, useCalcResult } from "@/lib/stores/editor-store"
 import { formatRupiah } from "@/lib/format"
 
 export function CalcSummary() {
-  const state = useEditorStore()
+  const chips = useEditorStore((s) => s.chips)
+  const diskonTipe = useEditorStore((s) => s.diskonTipe)
+  const diskonNilai = useEditorStore((s) => s.diskonNilai)
+  const pajakPersen = useEditorStore((s) => s.pajakPersen)
+  const pajakInklusif = useEditorStore((s) => s.pajakInklusif)
+  const ongkir = useEditorStore((s) => s.ongkir)
+  const biayaLain = useEditorStore((s) => s.biayaLain)
+  const pembulatanAktif = useEditorStore((s) => s.pembulatanAktif)
+  const tipe = useEditorStore((s) => s.tipe)
+  const dibayar = useEditorStore((s) => s.dibayar)
   const cr = useCalcResult()
 
-  const showDiskon = state.chips.showDiskon && cr.diskonNominal > 0
-  const showPajak = state.chips.showPajak && cr.pajakNominal > 0
-  const showOngkir = state.chips.showOngkir && state.ongkir > 0
-  const showBiayaLain = state.chips.showBiayaLain && state.biayaLain > 0
-  const showPembulatan = state.pembulatanAktif && cr.pembulatanNominal !== 0
-  const showSisa = state.tipe !== "kwitansi" && cr.sisa !== cr.total
+  const showDiskon = chips.showDiskon && cr.diskonNominal > 0
+  const showPajak = chips.showPajak && cr.pajakNominal > 0
+  const showOngkir = chips.showOngkir && ongkir > 0
+  const showBiayaLain = chips.showBiayaLain && biayaLain > 0
+  const showPembulatan = pembulatanAktif && cr.pembulatanNominal !== 0
+  const showSisa = tipe !== "kwitansi" && cr.sisa !== cr.total
 
   // Jangan tampilkan rincian kalau subtotal nol
   if (cr.subtotal === 0) return null
@@ -26,8 +35,8 @@ export function CalcSummary() {
       {showDiskon && (
         <SummaryRow
           label={
-            state.diskonTipe === "persen"
-              ? `Diskon (${state.diskonNilai}%)`
+            diskonTipe === "persen"
+              ? `Diskon (${diskonNilai}%)`
               : "Diskon"
           }
           value={-cr.diskonNominal}
@@ -37,18 +46,18 @@ export function CalcSummary() {
       {/* Pajak */}
       {showPajak && (
         <SummaryRow
-          label={`Pajak ${state.pajakPersen}%${state.pajakInklusif ? " (termasuk)" : ""}`}
-          value={state.pajakInklusif ? 0 : cr.pajakNominal}
+          label={`Pajak ${pajakPersen}%${pajakInklusif ? " (termasuk)" : ""}`}
+          value={pajakInklusif ? 0 : cr.pajakNominal}
           displayValue={formatRupiah(cr.pajakNominal)}
-          note={state.pajakInklusif ? "sudah termasuk" : undefined}
+          note={pajakInklusif ? "sudah termasuk" : undefined}
         />
       )}
 
       {/* Ongkir */}
-      {showOngkir && <SummaryRow label="Ongkir" value={state.ongkir} />}
+      {showOngkir && <SummaryRow label="Ongkir" value={ongkir} />}
 
       {/* Biaya lain */}
-      {showBiayaLain && <SummaryRow label="Biaya lain" value={state.biayaLain} />}
+      {showBiayaLain && <SummaryRow label="Biaya lain" value={biayaLain} />}
 
       {/* Pembulatan */}
       {showPembulatan && (
@@ -69,7 +78,7 @@ export function CalcSummary() {
       {/* Sisa (jika ada pembayaran sebagian) */}
       {showSisa && (
         <>
-          <SummaryRow label="Dibayar" value={-state.dibayar} />
+          <SummaryRow label="Dibayar" value={-dibayar} />
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-fg-secondary">
               Sisa

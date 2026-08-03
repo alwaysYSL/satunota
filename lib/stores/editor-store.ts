@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import { create } from "zustand"
 import { calc, type CalcInput, type CalcResult } from "@/lib/calc"
 
@@ -145,9 +146,10 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     set((s) => {
       const updates: Partial<EditorState> = { tipe }
 
-      // Reset field-field yang tidak berlaku untuk jenis baru
+      // Reset field-field yang tidak berlaku untuk jenis baru (SRS §5.6)
       if (tipe !== "invoice") {
         updates.dueDate = null
+        updates.syarat = ""
         updates.chips = { ...s.chips, showJatuhTempo: false }
       }
       if (tipe !== "kwitansi") {
@@ -195,34 +197,84 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
 }))
 
 // ─── Selector: calc result ──────────────────────────────
+// Dioptimalkan dengan selector sempit + useMemo agar calc() hanya berjalan 1 kali
+// ketika input perhitungan berubah.
 
-export function buildCalcInput(state: EditorState): CalcInput {
+export function buildCalcInput(
+  items: EditorItem[],
+  diskonTipe: DiscountType,
+  diskonNilai: number,
+  pajakPersen: number,
+  pajakInklusif: boolean,
+  ongkir: number,
+  biayaLain: number,
+  pembulatanAktif: boolean,
+  dibayar: number,
+  tipe: DocType,
+): CalcInput {
   return {
-    items: state.items
+    items: items
       .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
       .map((it) => ({
         qty: it.qty,
         hargaSatuan: it.hargaSatuan,
         diskonBaris: it.diskonBaris,
       })),
-    diskonTipe: state.diskonTipe,
-    diskonNilai: state.diskonNilai,
-    pajakPersen: state.pajakPersen,
-    pajakInklusif: state.pajakInklusif,
-    ongkir: state.ongkir,
-    biayaLain: state.biayaLain,
-    pembulatanAktif: state.pembulatanAktif,
-    dibayar: state.tipe === "kwitansi" ? 0 : state.dibayar,
+    diskonTipe,
+    diskonNilai,
+    pajakPersen,
+    pajakInklusif,
+    ongkir,
+    biayaLain,
+    pembulatanAktif,
+    dibayar: tipe === "kwitansi" ? 0 : dibayar,
   }
 }
 
 export function useCalcResult(): CalcResult {
-  const state = useEditorStore()
-  const input = buildCalcInput(state)
+  const items = useEditorStore((s) => s.items)
+  const diskonTipe = useEditorStore((s) => s.diskonTipe)
+  const diskonNilai = useEditorStore((s) => s.diskonNilai)
+  const pajakPersen = useEditorStore((s) => s.pajakPersen)
+  const pajakInklusif = useEditorStore((s) => s.pajakInklusif)
+  const ongkir = useEditorStore((s) => s.ongkir)
+  const biayaLain = useEditorStore((s) => s.biayaLain)
+  const pembulatanAktif = useEditorStore((s) => s.pembulatanAktif)
+  const dibayar = useEditorStore((s) => s.dibayar)
+  const tipe = useEditorStore((s) => s.tipe)
 
-  const result = calc(input)
-  if (state.tipe === "kwitansi") {
-    return calc({ ...input, dibayar: result.total })
-  }
-  return result
+  return useMemo(() => {
+    const input = buildCalcInput(
+      items,
+      diskonTipe,
+      diskonNilai,
+      pajakPersen,
+      pajakInklusif,
+      ongkir,
+      biayaLain,
+      pembulatanAktif,
+      dibayar,
+      tipe,
+    )
+
+    const result = calc(input)
+    if (tipe === "kwitansi") {
+      return {
+        ...result,
+        sisa: 0,
+      }
+    }
+    return result
+  }, [
+    items,
+    diskonTipe,
+    diskonNilai,
+    pajakPersen,
+    pajakInklusif,
+    ongkir,
+    biayaLain,
+    pembulatanAktif,
+    dibayar,
+    tipe,
+  ])
 }

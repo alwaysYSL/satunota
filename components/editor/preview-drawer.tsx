@@ -10,6 +10,23 @@ import { DocumentPreview, type PreviewData } from "@/components/shared/document-
 import { useEditorStore, useCalcResult } from "@/lib/stores/editor-store"
 
 export function PreviewDrawer() {
+  const showPreview = useEditorStore((s) => s.showPreview)
+  const setShowPreview = useEditorStore((s) => s.setShowPreview)
+
+  return (
+    <Drawer
+      open={showPreview}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) setShowPreview(false)
+      }}
+      showSwipeHandle
+    >
+      {showPreview && <PreviewDrawerContent />}
+    </Drawer>
+  )
+}
+
+function PreviewDrawerContent() {
   const state = useEditorStore()
   const cr = useCalcResult()
 
@@ -44,37 +61,29 @@ export function PreviewDrawer() {
   }
 
   return (
-    <Drawer
-      open={state.showPreview}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) state.setShowPreview(false)
-      }}
-      showSwipeHandle
-    >
-      <DrawerContent className="max-h-[95dvh]">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-[16px] font-semibold text-fg">Pratinjau Dokumen</h2>
-          <DrawerClose
-            render={
-              <button
-                type="button"
-                className="flex h-[44px] w-[44px] items-center justify-center rounded-sm text-fg-secondary hover:bg-bg-hover"
-                aria-label="Tutup pratinjau"
-              >
-                <X className="size-5" />
-              </button>
-            }
-          />
-        </div>
+    <DrawerContent className="max-h-[95dvh]">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-line px-4 py-3">
+        <h2 className="text-[16px] font-semibold text-fg">Pratinjau Dokumen</h2>
+        <DrawerClose
+          render={
+            <button
+              type="button"
+              className="flex h-[44px] w-[44px] items-center justify-center rounded-sm text-fg-secondary hover:bg-bg-hover"
+              aria-label="Tutup pratinjau"
+            >
+              <X className="size-5" />
+            </button>
+          }
+        />
+      </div>
 
-        {/* Preview body */}
-        <div className="flex-1 overflow-y-auto p-4 bg-bg-subtle">
-          <div className="shadow-md rounded-none overflow-hidden">
-            <DocumentPreview data={previewData} />
-          </div>
+      {/* Preview body */}
+      <div className="flex-1 overflow-y-auto p-4 bg-bg-subtle">
+        <div className="shadow-md rounded-none overflow-hidden">
+          <DocumentPreview data={previewData} />
         </div>
-      </DrawerContent>
-    </Drawer>
+      </div>
+    </DrawerContent>
   )
 }
