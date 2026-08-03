@@ -43,9 +43,16 @@ Nilai di bawah mengikuti palet Notion. Jangan memakai warna di luar daftar ini.
 | `--text-tertiary` | `rgba(55,53,47,0.45)` | Placeholder, teks nonaktif |
 | `--border` | `rgba(55,53,47,0.09)` | Garis pemisah dan tepi kartu |
 | `--border-strong` | `rgba(55,53,47,0.16)` | Tepi input dan tabel |
-| `--accent` | `#2383E2` | Tombol utama, tautan, fokus |
-| `--accent-hover` | `#1B6FC4` | Aksen saat disentuh |
-| `--accent-subtle` | `#E7F3F8` | Latar terpilih, sorotan lembut |
+| `--brand` | `#2383E2` | Tombol utama, tautan, fokus |
+| `--brand-hover` | `#1B6FC4` | Aksen saat disentuh |
+| `--brand-subtle` | `#E7F3F8` | Latar terpilih, sorotan lembut |
+
+<aside>
+⚠️
+
+Warna aksen biru bernama **`--brand`**, bukan `--accent`. Nama `--accent` sudah dipakai shadcn/ui untuk latar hover, dan menimpanya akan membuat setiap hover di komponen shadcn berubah menjadi biru pekat. Jangan pernah menukar kedua nama ini.
+
+</aside>
 
 ### 1.2 Warna makna
 
@@ -151,7 +158,7 @@ Selain dua ini, **tidak ada bayangan.** Pemisahan antar area dikerjakan oleh gar
 
 | Varian | Latar | Teks | Tepi | Dipakai untuk |
 | --- | --- | --- | --- | --- |
-| Primary | `--accent` | Putih | Tidak ada | Satu per layar saja: Simpan, Bagikan, Cetak |
+| Primary | `--brand` | Putih | Tidak ada | Satu per layar saja: Simpan, Bagikan, Cetak |
 | Secondary | Transparan | `--text` | `--border-strong` | Aksi pendamping |
 | Ghost | Transparan | `--text-secondary` | Tidak ada | Ikon, aksi dalam baris item |
 | Danger | Transparan | `#D44C47` | Tidak ada | Hapus baris, hapus dokumen |
@@ -164,7 +171,7 @@ Ini bagian paling khas Notion dan paling menentukan rasa aplikasinya.
 
 - Keadaan diam: **tanpa tepi**, hanya teks di atas latar transparan.
 - Saat disentuh: latar berubah ke `--bg-hover`.
-- Saat aktif: tepi 1 px `--accent`, tanpa cincin fokus tebal, tanpa bayangan.
+- Saat aktif: tepi 1 px `--brand`, tanpa cincin fokus tebal, tanpa bayangan.
 - Placeholder memakai `--text-tertiary` dan berbunyi seperti contoh isi, misalnya `Nasi goreng`, bukan `Masukkan nama barang`.
 - Input angka: `inputmode="decimal"`, rata kanan, `tabular-nums`, format ribuan otomatis saat mengetik.
 
@@ -190,7 +197,7 @@ Dipakai untuk Diskon, Pajak, Ongkir, Catatan, Jatuh tempo sesuai SRS 9.1.
 
 - Bentuk: `--radius-sm`, tinggi 32 px, tepi `--border-strong`, teks 13 px.
 - Belum aktif: latar transparan, teks `--text-secondary`, diawali tanda tambah.
-- Sudah aktif: latar `--accent-subtle`, teks `--accent`, menampilkan nilainya, misalnya `Diskon Rp 5.000`.
+- Sudah aktif: latar `--brand-subtle`, teks `--brand`, menampilkan nilainya, misalnya `Diskon Rp 5.000`.
 - Menyentuh chip aktif membuka sheet bawah untuk mengubah nilainya.
 
 ### 4.5 Badge status
@@ -375,64 +382,182 @@ Bagian ini yang paling sering salah dikerjakan oleh AI. Ketika diberi design sys
 
 ## 10. Token siap tempel
 
+### 10.0 Catatan wajib: proyek memakai Tailwind v4
+
+Proyek ini memakai Tailwind v4, sehingga **tidak ada berkas** `tailwind.config.ts`. Seluruh konfigurasi tema ditulis di dalam CSS lewat blok `@theme inline`. Abaikan contoh konfigurasi Tailwind v3 dari mana pun, termasuk dari ingatan AI.
+
+Selain itu, shadcn/ui sudah menanam sekumpulan nama variabelnya sendiri. Alih-alih membuat sistem warna kedua yang berjalan paralel, token SATUNOTA menjadi sumber nilainya, lalu variabel shadcn menunjuk ke token itu. Dengan begitu komponen shadcn otomatis ikut berubah tanpa perlu ditimpa satu per satu.
+
+| Token SATUNOTA | Variabel shadcn yang menunjuk ke sana |
+| --- | --- |
+| `--bg` | `--background`, `--card`, `--popover` |
+| `--text` | `--foreground`, `--card-foreground`, `--popover-foreground` |
+| `--brand` | `--primary`, `--ring` |
+| `--bg-subtle` | `--secondary`, `--muted` |
+| `--bg-hover` | `--accent` |
+| `--text-secondary` | `--muted-foreground` |
+| `--border-strong` | `--input` |
+| `--danger` | `--destructive` |
+
 ### 10.1 `app/globals.css`
 
+Ganti **seluruh** isi berkas dengan ini. Jangan menyisakan blok `:root` bawaan shadcn di bawahnya.
+
 ```css
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-heading: var(--font-sans);
+
+  /* Jembatan ke shadcn/ui */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
+  /* Token SATUNOTA */
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+  --color-fg: var(--text);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-tertiary: var(--text-tertiary);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-neutral: var(--neutral);
+  --color-neutral-bg: var(--neutral-bg);
+  --color-pro: var(--pro);
+  --color-pro-bg: var(--pro-bg);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 15, 15, 0.12);
+
+  --container-content: 720px;
+}
+
+:root {
+  /* Token SATUNOTA, sumber kebenaran */
+  --bg: #FFFFFF;
+  --bg-subtle: #F7F7F5;
+  --bg-hover: rgba(55, 53, 47, 0.06);
+  --bg-active: rgba(55, 53, 47, 0.11);
+
+  --text: #37352F;
+  --text-secondary: rgba(55, 53, 47, 0.65);
+  --text-tertiary: rgba(55, 53, 47, 0.45);
+
+  --border: rgba(55, 53, 47, 0.09);
+  --border-strong: rgba(55, 53, 47, 0.16);
+
+  --brand: #2383E2;
+  --brand-hover: #1B6FC4;
+  --brand-subtle: #E7F3F8;
+
+  --success: #448361;
+  --success-bg: #DBEDDB;
+  --warning: #CB912F;
+  --warning-bg: #FDECC8;
+  --danger: #D44C47;
+  --danger-bg: #FFE2DD;
+  --info: #337EA9;
+  --info-bg: #D3E5EF;
+  --neutral: #787774;
+  --neutral-bg: #E3E2E0;
+  --pro: #9065B0;
+  --pro-bg: #EAE4F2;
+
+  /* Pemetaan ke shadcn/ui */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--bg);
+  --card-foreground: var(--text);
+  --popover: var(--bg);
+  --popover-foreground: var(--text);
+  --primary: var(--brand);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--bg-subtle);
+  --secondary-foreground: var(--text);
+  --muted: var(--bg-subtle);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--text);
+  --destructive: var(--danger);
+  --input: var(--border-strong);
+  --ring: var(--brand);
+  --radius: 6px;
+
+  --sidebar: var(--bg-subtle);
+  --sidebar-foreground: var(--text);
+  --sidebar-border: var(--border);
+}
+
+.dark {
+  --bg: #191919;
+  --bg-subtle: #202020;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --bg-active: rgba(255, 255, 255, 0.10);
+
+  --text: #D4D4D4;
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.40);
+
+  --border: rgba(255, 255, 255, 0.094);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --primary-foreground: #FFFFFF;
+}
+
 @layer base {
-  :root {
-    --bg: #FFFFFF;
-    --bg-subtle: #F7F7F5;
-    --bg-hover: rgba(55, 53, 47, 0.06);
-    --bg-active: rgba(55, 53, 47, 0.11);
-
-    --text: #37352F;
-    --text-secondary: rgba(55, 53, 47, 0.65);
-    --text-tertiary: rgba(55, 53, 47, 0.45);
-
-    --border: rgba(55, 53, 47, 0.09);
-    --border-strong: rgba(55, 53, 47, 0.16);
-
-    --accent: #2383E2;
-    --accent-hover: #1B6FC4;
-    --accent-subtle: #E7F3F8;
-
-    --success: #448361;
-    --success-bg: #DBEDDB;
-    --warning: #CB912F;
-    --warning-bg: #FDECC8;
-    --danger: #D44C47;
-    --danger-bg: #FFE2DD;
-    --info: #337EA9;
-    --info-bg: #D3E5EF;
-    --neutral: #787774;
-    --neutral-bg: #E3E2E0;
-    --pro: #9065B0;
-    --pro-bg: #EAE4F2;
-
-    --radius-sm: 4px;
-    --radius-md: 6px;
-    --radius-lg: 10px;
-
-    --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.06);
-    --shadow-md: 0 4px 12px rgba(15, 15, 15, 0.12);
+  * {
+    @apply border-border outline-ring/50;
   }
 
-  .dark {
-    --bg: #191919;
-    --bg-subtle: #202020;
-    --bg-hover: rgba(255, 255, 255, 0.055);
-    --bg-active: rgba(255, 255, 255, 0.10);
-    --text: #D4D4D4;
-    --text-secondary: rgba(255, 255, 255, 0.62);
-    --text-tertiary: rgba(255, 255, 255, 0.40);
-    --border: rgba(255, 255, 255, 0.094);
-    --border-strong: rgba(255, 255, 255, 0.18);
+  html {
+    @apply font-sans;
   }
 
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-sans);
+    @apply bg-background text-foreground;
     font-size: 16px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -443,7 +568,9 @@ Bagian ini yang paling sering salah dikerjakan oleh AI. Ketika diberi design sys
   }
 
   @media (prefers-reduced-motion: reduce) {
-    * {
+    *,
+    *::before,
+    *::after {
       transition: none !important;
       animation: none !important;
     }
@@ -451,59 +578,20 @@ Bagian ini yang paling sering salah dikerjakan oleh AI. Ketika diberi design sys
 }
 ```
 
-### 10.2 `tailwind.config.ts`
+### 10.2 Kelas Tailwind yang tersedia
 
-```tsx
-import type { Config } from "tailwindcss"
+Setelah blok di atas dipasang, kelas berikut langsung bisa dipakai. Dilarang menulis nilai heksadesimal langsung di komponen.
 
-export default {
-	content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
-	theme: {
-		extend: {
-			colors: {
-				bg: {
-					DEFAULT: "var(--bg)",
-					subtle: "var(--bg-subtle)",
-					hover: "var(--bg-hover)",
-					active: "var(--bg-active)",
-				},
-				fg: {
-					DEFAULT: "var(--text)",
-					secondary: "var(--text-secondary)",
-					tertiary: "var(--text-tertiary)",
-				},
-				line: {
-					DEFAULT: "var(--border)",
-					strong: "var(--border-strong)",
-				},
-				accent: {
-					DEFAULT: "var(--accent)",
-					hover: "var(--accent-hover)",
-					subtle: "var(--accent-subtle)",
-				},
-				success: { DEFAULT: "var(--success)", bg: "var(--success-bg)" },
-				warning: { DEFAULT: "var(--warning)", bg: "var(--warning-bg)" },
-				danger: { DEFAULT: "var(--danger)", bg: "var(--danger-bg)" },
-				info: { DEFAULT: "var(--info)", bg: "var(--info-bg)" },
-				neutral: { DEFAULT: "var(--neutral)", bg: "var(--neutral-bg)" },
-				pro: { DEFAULT: "var(--pro)", bg: "var(--pro-bg)" },
-			},
-			borderRadius: {
-				sm: "var(--radius-sm)",
-				md: "var(--radius-md)",
-				lg: "var(--radius-lg)",
-			},
-			boxShadow: {
-				sm: "var(--shadow-sm)",
-				md: "var(--shadow-md)",
-			},
-			maxWidth: {
-				content: "720px",
-			},
-		},
-	},
-} satisfies Config
-```
+| Kebutuhan | Kelas |
+| --- | --- |
+| Latar | `bg-bg`, `bg-bg-subtle`, `bg-bg-hover`, `bg-brand`, `bg-brand-subtle` |
+| Teks | `text-fg`, `text-fg-secondary`, `text-fg-tertiary`, `text-brand` |
+| Garis | `border-line`, `border-line-strong` |
+| Status | `text-success bg-success-bg`, dan seterusnya untuk warning, danger, info, neutral, pro |
+| Radius | `rounded-sm` 4 px, `rounded-md` 6 px, `rounded-lg` 10 px |
+| Bayangan | `shadow-sm`, `shadow-md` |
+| Lebar isi | `max-w-content` (720 px) |
+| Angka uang | `tnum` |
 
 ---
 
@@ -511,7 +599,9 @@ export default {
 
 Salin daftar ini ke `AGENTS.md` sebagai aturan tampilan.
 
-- [ ]  Tidak ada nilai warna heksadesimal yang ditulis langsung di komponen. Semua lewat token Tailwind
+- [ ]  Tidak ada nilai warna heksadesimal yang ditulis langsung di komponen. Semua lewat kelas di bagian 10.2
+- [ ]  Tidak ada berkas `tailwind.config.ts`. Proyek memakai Tailwind v4 dengan `@theme inline`
+- [ ]  Warna biru utama bernama `--brand`, bukan `--accent`
 - [ ]  Tidak ada `rounded-full` pada tombol
 - [ ]  Tidak ada bayangan selain `shadow-sm` dan `shadow-md`
 - [ ]  Tidak ada gradien di mana pun
@@ -574,10 +664,10 @@ Aturan induk yang menyelesaikan semua perdebatan: **kalau ragu, tiru Notion.** N
 
 ### 12.4 Sumber
 
-- [Why Your AI Keeps Building the Same Purple Gradient Website](https://prg.sh/ramblings/Why-Your-AI-Keeps-Building-the-Same-Purple-Gradient-Website)
-- NN/g — [Prompt to Design Interfaces: Why Vague Prompts Fail](https://www.nngroup.com/articles/vague-prototyping/)
-- [Looks Good, But Is It Usable? Evaluating Usability in AI-Generated Mobile UIs (CHI 2026)](https://dl.acm.org/doi/10.1145/3772363.3799002)
-- [AI-generated UI proves people value design, but not designers](https://www.reddit.com/r/UXDesign/comments/1tvt03p/aigenerated_ui_proves_people_value_design_but_not/)
-- [What's the most common UX mistake in AI-generated interfaces](https://www.reddit.com/r/UserExperienceDesign/comments/1pxbr2s/whats_the_most_common_ux_mistake_you_see_in/)
-- [How to Avoid AI Slop in Vibe-Coded Landing Pages](https://www.youtube.com/watch?v=M4DNgmI7MIM)
-- [Why Your AI-Generated UI Looks Like Everyone Else's](https://medium.com/@Rythmuxdesigner/why-your-ai-generated-ui-looks-like-everyone-elses-and-how-to-break-the-pattern-7a3bf6b070be)
+- Why Your AI Keeps Building the Same Purple Gradient Website
+- NN/g — Prompt to Design Interfaces: Why Vague Prompts Fail
+- Looks Good, But Is It Usable? Evaluating Usability in AI-Generated Mobile UIs (CHI 2026)
+- r/UXDesign — AI-generated UI proves people value design, but not designers
+- r/UserExperienceDesign — What's the most common UX mistake in AI-generated interfaces
+- How to Avoid AI Slop in Vibe-Coded Landing Pages
+- Why Your AI-Generated UI Looks Like Everyone Else's
