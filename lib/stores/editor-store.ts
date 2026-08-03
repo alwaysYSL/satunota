@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { create } from "zustand"
 import { calc, type CalcInput, type CalcResult } from "@/lib/calc"
+import { documentSchema, documentItemSchema } from "@/lib/schema/document"
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export type ChipVisibility = {
   showJatuhTempo: boolean
 }
 
+export type ItemErrors = Record<string, string>
+
 export type EditorState = {
   // Identitas usaha
   businessNama: string
@@ -45,6 +48,9 @@ export type EditorState = {
 
   // Item
   items: EditorItem[]
+
+  // Validasi error per item ID
+  itemErrors: ItemErrors
 
   // Perhitungan
   diskonTipe: DiscountType
@@ -74,6 +80,7 @@ export type EditorActions = {
   toggleChip: (chip: keyof ChipVisibility) => void
   resetDocument: () => void
   setShowPreview: (show: boolean) => void
+  validateDocument: () => boolean
 }
 
 // ─── Helpers ────────────────────────────────────────────
@@ -117,6 +124,7 @@ function initialState(): EditorState {
     catatan: "",
     syarat: "",
     items: [createEmptyItem()],
+    itemErrors: {},
     diskonTipe: "nominal",
     diskonNilai: 0,
     pajakPersen: 0,
@@ -139,7 +147,7 @@ function initialState(): EditorState {
 
 // ─── Store ──────────────────────────────────────────────
 
-export const useEditorStore = create<EditorState & EditorActions>((set) => ({
+export const useEditorStore = create<EditorState & EditorActions>((set, get) => ({
   ...initialState(),
 
   setTipe: (tipe) =>
@@ -171,18 +179,27 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
     })),
 
   updateItem: (id, partial) =>
-    set((s) => ({
-      items: s.items.map((item) =>
-        item.id === id ? { ...item, ...partial } : item,
-      ),
-    })),
+    set((s) => {
+      const updatedErrors = { ...s.itemErrors }
+      if (updatedErrors[id] && partial.nama && partial.nama.trim() !== "") {
+        delete updatedErrors[id]
+      }
+      return {
+        items: s.items.map((item) =>
+          item.id === id ? { ...item, ...partial } : item,
+        ),
+        itemErrors: updatedErrors,
+      }
+    }),
 
   removeItem: (id) =>
     set((s) => {
+      const updatedErrors = { ...s.itemErrors }
+      delete updatedErrors[id]
       const filtered = s.items.filter((item) => item.id !== id)
-      // Selalu setidaknya satu baris kosong
       return {
         items: filtered.length === 0 ? [createEmptyItem()] : filtered,
+        itemErrors: updatedErrors,
       }
     }),
 
@@ -194,11 +211,92 @@ export const useEditorStore = create<EditorState & EditorActions>((set) => ({
   resetDocument: () => set(initialState()),
 
   setShowPreview: (show) => set({ showPreview: show }),
+
+  validateDocument: () => {
+    const s = get()
+    const itemErrors: ItemErrors = {}
+
+    // 1. Identifikasi item yang aktif (yang punya nama atau punya harga > 0)
+    const activeItems = s.items.filter(
+      (it) => it.nama.trim() !== "" || it.hargaSatuan > 0,
+    )
+
+    // Validasi setiap item aktif memakai documentItemSchema
+    const validUuid = "00000000-0000-0000-0000-000000000000"
+    for (const item of s.items) {
+      // Jika item punya harga > 0 tetapi namanya kosong, atau nama diisi tetapi invalid
+      if (item.hargaSatuan > 0 || item.nama.trim() !== "") {
+        const itemParse = documentItemSchema.safeParse({
+          id: validUuid,
+          urutan: 0,
+          nama: item.nama.trim(),
+          qty: item.qty > 0 ? item.qty : 1,
+          satuan: item.satuan || "pcs",
+          hargaSatuan: item.hargaSatuan,
+          diskonBaris: item.diskonBaris,
+          subtotal: Math.max(
+            0,
+            Math.round(item.qty * item.hargaSatuan) - item.diskonBaris,
+          ),
+        })
+
+        if (!itemParse.success) {
+          const issue = itemParse.error.issues.find((i) =>
+            i.path.includes("nama"),
+          )
+          if (issue) {
+            itemErrors[item.id] = "Nama barang perlu diisi"
+          }
+        }
+      }
+    }
+
+    // 2. Validasi dokumen lengkap dengan documentSchema
+    const docPayload = {
+      id: validUuid,
+      businessId: validUuid,
+      tipe: s.tipe,
+      nomor: s.nomor || "NT-001",
+      tanggal: s.tanggal,
+      dueDate: s.dueDate,
+      customerId: null,
+      customerNama: s.customerNama || null,
+      diterimaDari: s.diterimaDari || null,
+      status: s.tipe === "kwitansi" ? ("lunas" as const) : ("draf" as const),
+      diskonTipe: s.diskonTipe,
+      diskonNilai: s.diskonNilai,
+      pajakPersen: s.pajakPersen,
+      pajakInklusif: s.pajakInklusif,
+      ongkir: s.ongkir,
+      biayaLain: s.biayaLain,
+      pembulatanAktif: s.pembulatanAktif,
+      catatan: s.catatan || null,
+      syarat: s.syarat || null,
+      sourceDocumentId: null,
+      items: activeItems.map((item, idx) => ({
+        id: validUuid,
+        urutan: idx,
+        nama: item.nama.trim(),
+        qty: item.qty > 0 ? item.qty : 1,
+        satuan: item.satuan || "pcs",
+        hargaSatuan: item.hargaSatuan,
+        diskonBaris: item.diskonBaris,
+        subtotal: Math.max(
+          0,
+          Math.round(item.qty * item.hargaSatuan) - item.diskonBaris,
+        ),
+      })),
+    }
+
+    const docParse = documentSchema.safeParse(docPayload)
+    const isValid = docParse.success && Object.keys(itemErrors).length === 0
+
+    set({ itemErrors })
+    return isValid
+  },
 }))
 
 // ─── Selector: calc result ──────────────────────────────
-// Dioptimalkan dengan selector sempit + useMemo agar calc() hanya berjalan 1 kali
-// ketika input perhitungan berubah.
 
 export function buildCalcInput(
   items: EditorItem[],

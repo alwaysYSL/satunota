@@ -15,6 +15,7 @@ type ItemRowProps = {
 export function ItemRow({ item, subtotal, isOnly }: ItemRowProps) {
   const updateItem = useEditorStore((s) => s.updateItem)
   const removeItem = useEditorStore((s) => s.removeItem)
+  const itemError = useEditorStore((s) => s.itemErrors[item.id])
 
   return (
     <div
@@ -23,30 +24,39 @@ export function ItemRow({ item, subtotal, isOnly }: ItemRowProps) {
         "flex flex-col gap-1.5 px-1",
       )}
     >
-      {/* Baris 1: Nama barang */}
-      <div className="flex items-center gap-1">
-        <NotionInput
-          value={item.nama}
-          onChange={(v) => updateItem(item.id, { nama: v })}
-          placeholder="Nasi goreng"
-          className="flex-1 text-fg"
-        />
-        {/* Tombol hapus — muncul saat hover/focus */}
-        {!isOnly && (
-          <button
-            type="button"
-            onClick={() => removeItem(item.id)}
-            className={cn(
-              "flex h-[44px] w-[44px] shrink-0 items-center justify-center",
-              "rounded-sm text-fg-tertiary",
-              "opacity-0 transition-opacity duration-[20ms]",
-              "group-hover:opacity-100 group-focus-within:opacity-100",
-              "hover:text-danger",
-            )}
-            aria-label="Hapus baris"
-          >
-            <X className="size-4" />
-          </button>
+      {/* Baris 1: Nama barang & Tombol Hapus */}
+      <div className="flex flex-col">
+        <div className="flex items-center gap-1">
+          <NotionInput
+            value={item.nama}
+            onChange={(v) => updateItem(item.id, { nama: v })}
+            placeholder="Nasi goreng"
+            className="flex-1 text-fg"
+          />
+          {/* Tombol hapus — muncul saat hover/focus */}
+          {!isOnly && (
+            <button
+              type="button"
+              onClick={() => removeItem(item.id)}
+              className={cn(
+                "flex h-[44px] w-[44px] shrink-0 items-center justify-center",
+                "rounded-sm text-fg-tertiary",
+                "opacity-0 transition-opacity duration-[20ms]",
+                "group-hover:opacity-100 group-focus-within:opacity-100",
+                "hover:text-danger",
+              )}
+              aria-label="Hapus baris"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Inline error message di bawah field nama */}
+        {itemError && (
+          <p className="text-[12px] text-danger mt-0.5 px-2 font-normal">
+            {itemError}
+          </p>
         )}
       </div>
 

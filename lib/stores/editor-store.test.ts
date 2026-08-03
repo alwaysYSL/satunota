@@ -40,4 +40,23 @@ describe("editor-store setTipe & reset behavior", () => {
 
     expect(useEditorStore.getState().diterimaDari).toBe("")
   })
+
+  it("flags items with price > 0 but empty name during document validation", () => {
+    const store = useEditorStore.getState()
+
+    const itemId = store.items[0].id
+    store.updateItem(itemId, { nama: "", hargaSatuan: 15000 })
+
+    const isValid = store.validateDocument()
+
+    expect(isValid).toBe(false)
+    expect(useEditorStore.getState().itemErrors[itemId]).toBe("Nama barang perlu diisi")
+
+    // Update item name
+    store.updateItem(itemId, { nama: "Buku Tulis" })
+
+    const isNowValid = store.validateDocument()
+    expect(isNowValid).toBe(true)
+    expect(useEditorStore.getState().itemErrors[itemId]).toBeUndefined()
+  })
 })
