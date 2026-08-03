@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import "@fontsource-variable/inter";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
+const inter = {
   variable: "--font-sans",
-  display: "swap",
-});
+  className: "font-sans",
+  style: { fontFamily: '"Inter Variable", sans-serif' },
+}
 
 export const metadata: Metadata = {
   title: "SATUNOTA — Buat Nota, Invoice, Kwitansi",
