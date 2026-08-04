@@ -47,10 +47,13 @@ function buildCalcInputFromState(s: EditorState): CalcInput {
  * 2. Dokumen beserta seluruh barisnya ditulis sebagai satu transaksi.
  *    Baris yang dihapus pengguna dihapus dari database (tidak meninggalkan baris yatim).
  * 3. Nomor HANYA dialokasikan satu kali per jenis dokumen per draf di database.
- *    Penyimpanan berikutnya untuk draf/jenis yang sama TIDAK MENYENTUH nextSeq sama sekali.
  * 4. Identitas usaha (nama, alamat, telepon) disimpan ke tabel businesses milik tamu.
  * 5. meta."docCount" diperbarui saat dokumen baru dibuat (bukan setiap penyimpanan).
  * 6. Angka tetap hanya dari calc(). Simpan hasilnya sebagai snapshot.
+ * 7. Subtotal item dipetakan berbasis id item, BUKAN indeks.
+ * 8. Status dipertahankan dari dokumen yang sudah ada (tidak menimpa status ke 'draf').
+ * 9. sourceDocumentId & customerId dipertahankan dari dokumen yang sudah ada.
+ * 10. Menolak penulisan dokumen yang deletedAt-nya tidak null.
  */
 export async function saveDocument(
   state: EditorState,
@@ -71,12 +74,22 @@ export async function saveDocument(
   let isNewDoc = false
   let newlyAllocatedTipe: "nota" | "invoice" | "kwitansi" | null = null
 
+  let wasAborted = false
+
   // Eksekusi penulisan identitas usaha, dokumen, item, dan meta dalam SATU transaksi Dexie
   await db.transaction(
     "rw",
     [db.businesses, db.documents, db.documentItems, db.meta],
     async () => {
-      // 1. Simpan/perbarui identitas usaha di tabel businesses (MASALAH 3)
+      const existingDoc = await db.documents.get(docId)
+
+      // MASALAH 4: Menolak menyimpan dokumen yang deletedAt-nya sudah terisi
+      if (existingDoc && existingDoc.deletedAt !== null) {
+        wasAborted = true
+        return
+      }
+
+      // 1. Simpan/perbarui identitas usaha di tabel businesses
       const biz = await db.businesses.get(businessId)
       if (biz) {
         await db.businesses.put({
@@ -88,9 +101,7 @@ export async function saveDocument(
         })
       }
 
-      // 2. Tentukan nomor dokumen (MASALAH 1)
-      const existingDoc = await db.documents.get(docId)
-
+      // 2. Tentukan nomor dokumen
       if (!existingDoc) {
         // DOKUMEN BARU PERTAMA KALI DISIMPAN KE DATABASE
         isNewDoc = true
@@ -114,12 +125,10 @@ export async function saveDocument(
         if (state.nomorManual && state.nomor.trim() !== "") {
           finalNomor = state.nomor
         } else if (state.allocatedNomor[state.tipe]) {
-          // Re-use nomor yang sudah pernah dialokasikan untuk jenis dokumen ini pada draf aktif
           finalNomor = state.allocatedNomor[state.tipe]!
         } else if (existingDoc.tipe === state.tipe && existingDoc.nomor) {
           finalNomor = existingDoc.nomor
         } else {
-          // Tipe dokumen diubah ke jenis baru yang belum punya alokasi nomor untuk draf ini
           finalNomor = await generateDocNomor(businessId, state.tipe)
           newlyAllocatedTipe = state.tipe
         }
@@ -130,6 +139,20 @@ export async function saveDocument(
       const dibayar = state.tipe === "kwitansi" ? total : state.dibayar
       const sisa = state.tipe === "kwitansi" ? 0 : result.sisa
 
+      // MASALAH 2: Pertahankan status dokumen yang sudah ada di Dexie
+      let finalStatus: LocalDocument["status"] = "draf"
+      if (state.tipe === "kwitansi") {
+        finalStatus = "lunas"
+      } else if (existingDoc) {
+        finalStatus = existingDoc.status
+      } else {
+        finalStatus = "draf"
+      }
+
+      // MASALAH 3: Pertahankan customerId & sourceDocumentId yang sudah ada
+      const finalCustomerId = existingDoc ? existingDoc.customerId : null
+      const finalSourceDocumentId = existingDoc ? existingDoc.sourceDocumentId : null
+
       const doc: LocalDocument = {
         id: docId,
         businessId,
@@ -137,10 +160,10 @@ export async function saveDocument(
         nomor: finalNomor,
         tanggal: state.tanggal,
         dueDate: state.dueDate,
-        customerId: null,
+        customerId: finalCustomerId,
         customerNama: state.customerNama || null,
         diterimaDari: state.diterimaDari || null,
-        status: state.tipe === "kwitansi" ? "lunas" : "draf",
+        status: finalStatus,
         diskonTipe: state.diskonTipe,
         diskonNilai: state.diskonNilai,
         pajakPersen: state.pajakPersen,
@@ -158,13 +181,21 @@ export async function saveDocument(
         sisa,
         catatan: state.catatan || null,
         syarat: state.syarat || null,
-        sourceDocumentId: null,
+        sourceDocumentId: finalSourceDocumentId,
         createdAt: existingDoc ? existingDoc.createdAt : now,
         updatedAt: now,
         deletedAt: null,
       }
 
-      // Simpan SELURUH baris item pengguna yang ada di store
+      // MASALAH 1: Pemetaan subtotal berbasis ID item, BUKAN berbasis indeks
+      const activeItems = state.items.filter(
+        (it) => it.nama.trim() !== "" || it.hargaSatuan > 0,
+      )
+      const itemSubtotalMap = new Map<string, number>()
+      activeItems.forEach((item, activeIdx) => {
+        itemSubtotalMap.set(item.id, result.itemSubtotals[activeIdx] ?? 0)
+      })
+
       const items: LocalDocumentItem[] = state.items.map((item, idx) => ({
         id: item.id,
         documentId: docId,
@@ -174,7 +205,7 @@ export async function saveDocument(
         satuan: item.satuan || "pcs",
         hargaSatuan: item.hargaSatuan,
         diskonBaris: item.diskonBaris,
-        subtotal: result.itemSubtotals[idx] ?? 0,
+        subtotal: itemSubtotalMap.get(item.id) ?? 0,
       }))
 
       await db.documents.put(doc)
@@ -182,13 +213,17 @@ export async function saveDocument(
       // Hapus seluruh item lama milik dokumen ini agar baris terhapus tidak jadi yatim
       await db.documentItems.where("documentId").equals(docId).delete()
       if (items.length > 0) {
-        await db.documentItems.bulkAdd(items)
+        await db.documentItems.bulkPut(items)
       }
 
       // Simpan draf aktif
       await db.meta.put({ key: "activeDraftId", value: docId })
     },
   )
+
+  if (wasAborted) {
+    return null
+  }
 
   return {
     documentId: docId,
@@ -197,4 +232,3 @@ export async function saveDocument(
     newlyAllocatedTipe,
   }
 }
-

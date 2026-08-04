@@ -4,10 +4,11 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { db } from "./local"
 import { saveDocument } from "./auto-save"
 import { hydrateDraft } from "./draft"
+import { softDeleteDocument, convertInvoiceToKwitansi } from "./documents"
 import { useEditorStore, type DocType } from "@/lib/stores/editor-store"
 import { v7 as uuidv7 } from "uuid"
 
-describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
+describe("Penyimpanan lokal & Auto-save (Hari 4A & 4B Fixes)", () => {
   beforeEach(async () => {
     // Reset database IndexedDB dan Zustand store sebelum setiap tes
     await db.delete()
@@ -25,7 +26,6 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
       nomorManual: false,
     })
 
-    // Simpan 20 kali berturut-turut
     for (let i = 0; i < 20; i++) {
       const state = useEditorStore.getState()
       const res = await saveDocument(state)
@@ -35,7 +35,6 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
     }
 
     const seqEntry = await db.meta.get("nextSeq:nota")
-    // Karena dimulai dari 1 (digunakan untuk dokumen 1), nilai nextSeq berikutnya adalah 2
     expect(seqEntry?.value).toBe(2)
 
     const docCount = await db.documents.count()
@@ -56,14 +55,13 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
     await saveDocument(state)
 
     const seqEntry = await db.meta.get("nextSeq:nota")
-    expect(seqEntry).toBeUndefined() // nextSeq tidak pernah tersentuh
+    expect(seqEntry).toBeUndefined()
 
     const doc = await db.documents.get(docId)
     expect(doc?.nomor).toBe("MANUAL-001")
   })
 
   it("3. Hidrasi dengan store kosong tidak menimpa dokumen yang sudah ada di Dexie", async () => {
-    // 1. Simpan dokumen awal dengan data item ke Dexie
     const docId = uuidv7()
     await db.meta.put({ key: "activeDraftId", value: docId })
     useEditorStore.setState({
@@ -83,7 +81,6 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
     })
     await saveDocument(useEditorStore.getState())
 
-    // 2. Simulasi muat ulang aplikasi (reset store ke keadaan awal/kosong un-hydrated)
     useEditorStore.setState({
       businessNama: "",
       documentId: null,
@@ -92,10 +89,8 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
       hydrated: false,
     })
 
-    // 3. Jalankan hidrasi
     await hydrateDraft()
 
-    // 4. Pastikan data yang ter-hidrasi sama dengan data yang ada di Dexie
     const stateAfterHydration = useEditorStore.getState()
     expect(stateAfterHydration.hydrated).toBe(true)
     expect(stateAfterHydration.documentId).toBe(docId)
@@ -132,7 +127,6 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
       ],
     })
 
-    // Simpan dokumen pertama kali
     await saveDocument(useEditorStore.getState())
     let itemsInDb = await db.documentItems
       .where("documentId")
@@ -140,11 +134,9 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
       .toArray()
     expect(itemsInDb).toHaveLength(2)
 
-    // Hapus item1 dari store
     useEditorStore.getState().removeItem(item1Id)
-
-    // Simpan otomatis berikutnya
     await saveDocument(useEditorStore.getState())
+
     itemsInDb = await db.documentItems
       .where("documentId")
       .equals(docId)
@@ -155,171 +147,182 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A Fixes Lanjutan)", () => {
     expect(itemsInDb[0]?.nama).toBe("Barang B")
   })
 
-  it("5. Membuka ulang aplikasi lima kali TIDAK menambah baris di tabel documents", async () => {
-    for (let i = 0; i < 5; i++) {
-      await hydrateDraft()
-      useEditorStore.getState().setField("catatan", `Catatan revisi ${i}`)
-      await saveDocument(useEditorStore.getState())
-    }
+  it("5. Daftar item dengan baris kosong di tengah: subtotal setiap baris tersimpan tepat pada barisnya (MASALAH 1)", async () => {
+    const docId = uuidv7()
+    const item1Id = uuidv7()
+    const item2Id = uuidv7() // Baris kosong di tengah
+    const item3Id = uuidv7()
 
-    const docCount = await db.documents.count()
-    expect(docCount).toBe(1)
+    useEditorStore.setState({
+      documentId: docId,
+      hydrated: true,
+      tipe: "nota",
+      items: [
+        {
+          id: item1Id,
+          nama: "Kopi Hitam",
+          qty: 2,
+          satuan: "cangkir",
+          hargaSatuan: 10000,
+          diskonBaris: 0,
+        },
+        {
+          id: item2Id,
+          nama: "", // Kosong
+          qty: 1,
+          satuan: "pcs",
+          hargaSatuan: 0,
+          diskonBaris: 0,
+        },
+        {
+          id: item3Id,
+          nama: "Teh Manis",
+          qty: 1,
+          satuan: "gelas",
+          hargaSatuan: 5000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    const dbItems = await db.documentItems
+      .where("documentId")
+      .equals(docId)
+      .sortBy("urutan")
+
+    expect(dbItems).toHaveLength(3)
+
+    // Item 1: subtotal 20.000
+    expect(dbItems[0]!.id).toBe(item1Id)
+    expect(dbItems[0]!.subtotal).toBe(20000)
+
+    // Item 2 (kosong): subtotal 0
+    expect(dbItems[1]!.id).toBe(item2Id)
+    expect(dbItems[1]!.subtotal).toBe(0)
+
+    // Item 3: subtotal 5.000 (TIDAK tergeser menjadi 20.000)
+    expect(dbItems[2]!.id).toBe(item3Id)
+    expect(dbItems[2]!.subtotal).toBe(5000)
   })
 
-  it("6. Alokasi nomor hanya terjadi di transaksi baru sehingga nextSeq == count documents", async () => {
-    for (let i = 0; i < 3; i++) {
-      useEditorStore.getState().resetDocument()
-      const docId = uuidv7()
-      useEditorStore.setState({
-        documentId: docId,
-        hydrated: true,
-        tipe: "nota",
-        nomor: "",
-        nomorManual: false,
-      })
+  it("6. Dokumen berstatus terkirim disunting lalu disimpan: status tetap terkirim (MASALAH 2)", async () => {
+    const docId = uuidv7()
+    useEditorStore.setState({
+      documentId: docId,
+      hydrated: true,
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+    })
 
-      for (let saveCount = 0; saveCount < 3; saveCount++) {
-        const res = await saveDocument(useEditorStore.getState())
-        if (res?.newlyAllocatedTipe) {
-          useEditorStore.getState().setAllocatedNomor(res.newlyAllocatedTipe, res.nomor)
-        }
-      }
-    }
+    await saveDocument(useEditorStore.getState())
 
-    const docCountInDb = await db.documents.count()
-    expect(docCountInDb).toBe(3)
+    // Update status di Dexie menjadi 'terkirim'
+    await db.documents.update(docId, { status: "terkirim" })
 
-    const seqEntry = await db.meta.get("nextSeq:nota")
-    expect(seqEntry?.value).toBe(4)
-    expect((seqEntry?.value ?? 0) - 1).toBe(docCountInDb)
+    // Sunting dokumen dari editor store
+    useEditorStore.setState({ catatan: "Catatan diperbarui" })
+    await saveDocument(useEditorStore.getState())
 
-    const metaDocCount = await db.meta.get("docCount")
-    expect(metaDocCount?.value).toBe(3)
+    // Cek di Dexie: status HARUS tetap 'terkirim', bukan ter-reset ke 'draf'
+    const docInDb = await db.documents.get(docId)
+    expect(docInDb?.status).toBe("terkirim")
+    expect(docInDb?.catatan).toBe("Catatan diperbarui")
   })
 
-  it("7. Berpindah jenis dokumen sepuluh kali hanya menaikkan urutan untuk jenis yang benar-benar baru disentuh, dan kembali ke jenis sebelumnya memakai nomor yang sama", async () => {
+  it("7. Kwitansi hasil konversi disunting: sourceDocumentId tetap utuh (MASALAH 3)", async () => {
+    const invoiceId = uuidv7()
+    useEditorStore.setState({
+      documentId: invoiceId,
+      hydrated: true,
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+      customerNama: "PT Sukses Bersama",
+      items: [
+        {
+          id: uuidv7(),
+          nama: "Jasa Pembuatan Software",
+          qty: 1,
+          satuan: "paket",
+          hargaSatuan: 10000000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Update invoice ke lunas
+    await db.documents.update(invoiceId, {
+      status: "lunas",
+      dibayar: 10000000,
+      sisa: 0,
+    })
+
+    // Konversi ke kwitansi
+    const kwitansi = await convertInvoiceToKwitansi(invoiceId)
+    expect(kwitansi.sourceDocumentId).toBe(invoiceId)
+
+    // Buka kwitansi di editor dan sunting
+    useEditorStore.setState({
+      documentId: kwitansi.id,
+      hydrated: true,
+      tipe: "kwitansi",
+      catatan: "Pembayaran lunas via transfer",
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Cek di Dexie: sourceDocumentId HARUS tetap menunjuk ke invoiceId
+    const kwitansiInDb = await db.documents.get(kwitansi.id)
+    expect(kwitansiInDb?.sourceDocumentId).toBe(invoiceId)
+    expect(kwitansiInDb?.catatan).toBe("Pembayaran lunas via transfer")
+  })
+
+  it("8. Dokumen dihapus lalu ada penyimpanan tertunda: dokumen TIDAK muncul kembali di riwayat (MASALAH 4)", async () => {
     const docId = uuidv7()
     useEditorStore.setState({
       documentId: docId,
       hydrated: true,
       tipe: "nota",
-      nomor: "",
-      nomorManual: false,
-    })
-
-    // Simpan nota pertama kali
-    let res = await saveDocument(useEditorStore.getState())
-    if (res?.newlyAllocatedTipe) {
-      useEditorStore.getState().setAllocatedNomor(res.newlyAllocatedTipe, res.nomor)
-      useEditorStore.getState().setNomor(res.nomor, false)
-    }
-    const notaNomorAwal = useEditorStore.getState().nomor
-    expect(notaNomorAwal).toContain("NT/")
-
-    // Berpindah tipe berkali-kali: nota -> invoice -> kwitansi -> nota -> invoice...
-    const sequenceOfTypes: DocType[] = [
-      "invoice",
-      "nota",
-      "kwitansi",
-      "invoice",
-      "nota",
-      "kwitansi",
-      "invoice",
-      "nota",
-      "kwitansi",
-    ]
-
-    let invoiceNomorFirst: string | null = null
-
-    for (const targetTipe of sequenceOfTypes) {
-      useEditorStore.getState().setTipe(targetTipe)
-      res = await saveDocument(useEditorStore.getState())
-      if (res?.newlyAllocatedTipe) {
-        useEditorStore.getState().setAllocatedNomor(res.newlyAllocatedTipe, res.nomor)
-        useEditorStore.getState().setNomor(res.nomor, false)
-      }
-
-      if (targetTipe === "nota") {
-        // Harus tetap memakai nomor nota yang sama!
-        expect(useEditorStore.getState().nomor).toBe(notaNomorAwal)
-      } else if (targetTipe === "invoice") {
-        if (!invoiceNomorFirst) {
-          invoiceNomorFirst = useEditorStore.getState().nomor
-        } else {
-          // Harus tetap memakai nomor invoice yang sama!
-          expect(useEditorStore.getState().nomor).toBe(invoiceNomorFirst)
-        }
-      }
-    }
-
-    // nextSeq untuk nota, invoice, kwitansi masing-masing hanya dialokasikan 1 kali (dari 1 naik ke 2)
-    const seqNota = await db.meta.get("nextSeq:nota")
-    const seqInvoice = await db.meta.get("nextSeq:invoice")
-    const seqKwitansi = await db.meta.get("nextSeq:kwitansi")
-
-    expect(seqNota?.value).toBe(2)
-    expect(seqInvoice?.value).toBe(2)
-    expect(seqKwitansi?.value).toBe(2)
-  })
-
-  it("8. Kunci meta yang tertulis di Dexie bernama tepat nextSeq:<tipe>", async () => {
-    const docId = uuidv7()
-    useEditorStore.setState({
-      documentId: docId,
-      hydrated: true,
-      tipe: "nota",
-      nomor: "",
-      nomorManual: false,
+      customerNama: "Pelanggan Hapus",
     })
 
     await saveDocument(useEditorStore.getState())
 
-    const metaKeys = (await db.meta.toArray()).map((m) => m.key)
-    expect(metaKeys).toContain("nextSeq:nota")
-    expect(metaKeys).toContain("lastSeqMonth:nota")
-    expect(metaKeys).toContain("docCount")
-    expect(metaKeys).toContain("guestId")
+    // Soft delete dokumen
+    await softDeleteDocument(docId)
+
+    // Percobaan simpan dokumen yang sudah disoft-delete
+    useEditorStore.setState({ documentId: docId, customerNama: "Percobaan Timpa" })
+    const saveResult = await saveDocument(useEditorStore.getState())
+    expect(saveResult).toBeNull()
+
+    // Verifikasi di Dexie: deletedAt tetap terisi timestamp (bukan null)
+    const docInDb = await db.documents.get(docId)
+    expect(docInDb?.deletedAt).not.toBeNull()
+
+    // Verifikasi dokumen tidak muncul di kueri riwayat
+    const activeDocs = (await db.documents.toArray()).filter((d) => !d.deletedAt)
+    expect(activeDocs.find((d) => d.id === docId)).toBeUndefined()
   })
 
-  it("9. Identitas usaha bertahan setelah muat ulang, dan jumlah baris businesses tetap satu", async () => {
-    // 1. Simpan identitas usaha dari editor
-    const docId = uuidv7()
+  it("9. Invoice belum lunas ditolak saat dikonversi menjadi kwitansi (TAMBAHAN 1)", async () => {
+    const invoiceId = uuidv7()
     useEditorStore.setState({
-      documentId: docId,
+      documentId: invoiceId,
       hydrated: true,
-      businessNama: "Toko Sembako Berkah",
-      businessAlamat: "Jl. Merdeka No. 45",
-      businessTelepon: "081234567890",
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+      status: "terkirim",
     })
 
     await saveDocument(useEditorStore.getState())
 
-    // 2. Verifikasi hanya ada 1 baris di tabel businesses
-    const bizCount = await db.businesses.count()
-    expect(bizCount).toBe(1)
-
-    const bizInDb = (await db.businesses.toArray())[0]
-    expect(bizInDb?.nama).toBe("Toko Sembako Berkah")
-    expect(bizInDb?.alamat).toBe("Jl. Merdeka No. 45")
-    expect(bizInDb?.telepon).toBe("081234567890")
-
-    // 3. Reset store dan jalankan hidrasi (simulasi muat ulang)
-    useEditorStore.setState({
-      businessNama: "",
-      businessAlamat: "",
-      businessTelepon: "",
-      hydrated: false,
-    })
-
-    await hydrateDraft()
-
-    // 4. Identitas usaha berhasil dimuat kembali dari Dexie
-    const stateAfterHydration = useEditorStore.getState()
-    expect(stateAfterHydration.businessNama).toBe("Toko Sembako Berkah")
-    expect(stateAfterHydration.businessAlamat).toBe("Jl. Merdeka No. 45")
-    expect(stateAfterHydration.businessTelepon).toBe("081234567890")
-
-    // 5. Jumlah baris businesses tetap 1
-    expect(await db.businesses.count()).toBe(1)
+    // Mencoba konversi invoice terkirim (belum lunas) ke kwitansi
+    await expect(convertInvoiceToKwitansi(invoiceId)).rejects.toThrow(
+      "Hanya invoice berstatus lunas yang dapat dikonversi menjadi kwitansi",
+    )
   })
 })

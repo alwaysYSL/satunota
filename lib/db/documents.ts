@@ -5,6 +5,9 @@ import { v7 as uuidv7 } from "uuid"
 import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
 import { generateDocNomor } from "./doc-numbering"
+import { createNewDocumentDraft, openDocumentDraft } from "./draft"
+import { cancelPendingAutoSave } from "@/lib/hooks/use-auto-save"
+import { useEditorStore } from "@/lib/stores/editor-store"
 
 export type DisplayStatus =
   | "draf"
@@ -38,24 +41,58 @@ export function calculateDisplayStatus(doc: LocalDocument): DisplayStatus {
 /**
  * Soft delete dokumen dengan mengisi deletedAt.
  * Baris fisik tidak dihapus agar sinkronisasi dan audit tetap utuh.
- * Jika dokumen yang dihapus sedang aktif (activeDraftId), activeDraftId dipindahkan
- * ke dokumen lain yang deletedAt-nya kosong (atau draf baru ID baru).
+ *
+ * ATURAN (MASALAH 4 & TAMBAHAN 3):
+ * 1. Batalkan penyimpanan otomatis yang sedang tertunda.
+ * 2. Kurangi docCount di meta.
+ * 3. Jika dokumen yang dihapus sedang aktif di store / activeDraftId, pindahkan ke draf lain atau draf baru.
  */
 export async function softDeleteDocument(documentId: string): Promise<void> {
+  // 1. Batalkan pending save
+  cancelPendingAutoSave()
+
   const now = new Date().toISOString()
+  let nextActiveId: string | null = null
+
   await db.transaction("rw", [db.documents, db.meta], async () => {
+    const doc = await db.documents.get(documentId)
+    if (!doc || doc.deletedAt !== null) return
+
     await db.documents.update(documentId, { deletedAt: now })
 
+    // TAMBAHAN 3: Kurangi docCount
+    const docCountEntry = await db.meta.get("docCount")
+    const currentCount =
+      typeof docCountEntry?.value === "number" ? docCountEntry.value : 0
+    await db.meta.put({ key: "docCount", value: Math.max(0, currentCount - 1) })
+
+    // MASALAH 4: Pindahkan draf aktif jika dokumen yang dihapus sedang aktif
     const activeDraftEntry = await db.meta.get("activeDraftId")
-    if (activeDraftEntry?.value === documentId) {
+    const storeDocId = useEditorStore.getState().documentId
+
+    if (activeDraftEntry?.value === documentId || storeDocId === documentId) {
       const nonDeletedDocs = (await db.documents.toArray())
         .filter((d) => !d.deletedAt && d.id !== documentId)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
-      const nextActiveId = nonDeletedDocs[0]?.id || uuidv7()
-      await db.meta.put({ key: "activeDraftId", value: nextActiveId })
+      if (nonDeletedDocs.length > 0) {
+        nextActiveId = nonDeletedDocs[0]!.id
+        await db.meta.put({ key: "activeDraftId", value: nextActiveId })
+      } else {
+        nextActiveId = null
+      }
     }
   })
+
+  // Perbarui store jika dokumen aktif dihapus
+  const currentStoreDocId = useEditorStore.getState().documentId
+  if (currentStoreDocId === documentId) {
+    if (nextActiveId) {
+      await openDocumentDraft(nextActiveId)
+    } else {
+      await createNewDocumentDraft()
+    }
+  }
 }
 
 /**
@@ -132,6 +169,8 @@ export async function duplicateDocument(
  * Konversi invoice lunas menjadi kwitansi tertaut lewat sourceDocumentId.
  *
  * ATURAN KERAS:
+ * - TAMBAHAN 1: Wajib menolak invoice yang belum lunas (status !== 'lunas').
+ * - TAMBAHAN 2: diterimaDari = invoice.customerNama || invoice.diterimaDari || "" (tidak ditebak 'Pelanggan').
  * - tipe = 'kwitansi'
  * - nomor baru dialokasikan via generateDocNomor (nextSeq:kwitansi)
  * - sourceDocumentId = invoice.id
@@ -147,6 +186,10 @@ export async function convertInvoiceToKwitansi(
   }
   if (invoice.tipe !== "invoice") {
     throw new Error("Hanya invoice yang dapat dikonversi menjadi kwitansi")
+  }
+  // TAMBAHAN 1: Wajib menolak invoice yang belum lunas
+  if (invoice.status !== "lunas") {
+    throw new Error("Hanya invoice berstatus lunas yang dapat dikonversi menjadi kwitansi")
   }
 
   const invoiceItems = await db.documentItems
@@ -180,8 +223,8 @@ export async function convertInvoiceToKwitansi(
         dueDate: null,
         customerId: invoice.customerId,
         customerNama: invoice.customerNama,
-        diterimaDari:
-          invoice.customerNama || invoice.diterimaDari || "Pelanggan",
+        // TAMBAHAN 2: Tidak mengarang 'Pelanggan' jika kosong
+        diterimaDari: invoice.customerNama || invoice.diterimaDari || "",
         status: "lunas",
         diskonTipe: invoice.diskonTipe,
         diskonNilai: invoice.diskonNilai,

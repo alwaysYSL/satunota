@@ -559,6 +559,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
       status: "lunas",
     })
     await saveDocument(useEditorStore.getState()) // Invoice 1 created (seq invoice -> 2)
+    await db.documents.update(invoice1Id, { status: "lunas" })
 
     // 3. Duplikat Nota -> menghasilkan Nota 2 (seq nota -> 3)
     await duplicateDocument(doc1Id)

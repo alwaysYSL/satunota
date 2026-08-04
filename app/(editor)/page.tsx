@@ -30,6 +30,7 @@ export default function EditorPage() {
   const dibayar = useEditorStore((s) => s.dibayar)
   const setField = useEditorStore((s) => s.setField)
   const setNomor = useEditorStore((s) => s.setNomor)
+  const hydrationError = useEditorStore((s) => s.hydrationError)
 
   const handleCreateNew = async () => {
     await createNewDocumentDraft()
@@ -38,6 +39,12 @@ export default function EditorPage() {
   return (
     <>
       <main className="mx-auto w-full max-w-[720px] pb-24 px-4">
+        {/* Banner Error Hidrasi (TAMBAHAN 4) */}
+        {hydrationError && (
+          <div className="my-3 p-3 bg-danger-bg text-danger text-[13px] rounded-md border border-danger/30 font-medium">
+            ⚠️ {hydrationError}
+          </div>
+        )}
         {/* ─── Top Bar Navigasi ────────────────────────── */}
         <div className="flex items-center justify-between py-2 border-b border-line">
           <span className="text-[13px] font-bold text-fg tracking-wide">

@@ -75,6 +75,9 @@ export type EditorState = {
 
   // Flag status hidrasi dari Dexie
   hydrated: boolean
+
+  // Pesan error jika hidrasi gagal
+  hydrationError: string | null
 }
 
 // ─── Actions ────────────────────────────────────────────
@@ -155,6 +158,7 @@ function initialState(): EditorState {
     },
     showPreview: false,
     hydrated: false,
+    hydrationError: null,
   }
 }
 

@@ -24,9 +24,24 @@ async function requestPersistentStorage(): Promise<void> {
   }
 }
 
+// Module-level reference to handle queued saves and cancellation
+let activeSaveTimer: ReturnType<typeof setTimeout> | null = null
+let hasPendingSave = false
+let isSaving = false
+
+/**
+ * Batalkan penyimpanan yang sedang tertunda / diantrekan.
+ * Dipanggil saat dokumen disoft-delete agar perubahan terakhir tidak menghidupkan kembali dokumen.
+ */
+export function cancelPendingAutoSave(): void {
+  if (activeSaveTimer) {
+    clearTimeout(activeSaveTimer)
+    activeSaveTimer = null
+  }
+  hasPendingSave = false
+}
+
 export function useAutoSave(): void {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isSavingRef = useRef(false)
   const firstSaveDoneRef = useRef(false)
 
   // 1. Jalankan hidrasi dari Dexie saat mounting
@@ -38,11 +53,56 @@ export function useAutoSave(): void {
 
   // 2. Berlangganan ke perubahan store di luar siklus render React
   useEffect(() => {
-    const unsub = useEditorStore.subscribe(async (state, prevState) => {
-      // WAJIB: Jangan simpan apapun selama belum ter-hidrasi
+    const executeSave = async () => {
+      if (isSaving) {
+        hasPendingSave = true
+        return
+      }
+
+      isSaving = true
+      hasPendingSave = false
+
+      try {
+        const currentState = useEditorStore.getState()
+        if (!currentState.hydrated || !currentState.documentId) return
+
+        const result = await saveDocument(currentState)
+
+        if (result) {
+          const latestState = useEditorStore.getState()
+          if (result.newlyAllocatedTipe) {
+            latestState.setAllocatedNomor(
+              result.newlyAllocatedTipe,
+              result.nomor,
+            )
+          }
+          if (
+            !latestState.nomorManual &&
+            latestState.nomor !== result.nomor
+          ) {
+            latestState.setNomor(result.nomor, false)
+          }
+
+          if (!firstSaveDoneRef.current) {
+            firstSaveDoneRef.current = true
+            requestPersistentStorage()
+          }
+        }
+      } catch (err) {
+        console.error("[auto-save] Gagal menyimpan:", err)
+      } finally {
+        isSaving = false
+        // MASALAH 5: Jika ada perubahan baru saat penyimpanan berlangsung, jalankan ulang segera
+        if (hasPendingSave) {
+          hasPendingSave = false
+          executeSave()
+        }
+      }
+    }
+
+    const unsub = useEditorStore.subscribe((state, prevState) => {
       if (!state.hydrated) return
 
-      // Deteksi apakah ada field yang berubah nilainya
       const contentChanged =
         state.tipe !== prevState.tipe ||
         state.nomor !== prevState.nomor ||
@@ -67,53 +127,21 @@ export function useAutoSave(): void {
 
       if (!contentChanged) return
 
-      // Debounce 500ms
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
+      if (activeSaveTimer) {
+        clearTimeout(activeSaveTimer)
       }
 
-      timerRef.current = setTimeout(async () => {
-        if (isSavingRef.current) return
-        isSavingRef.current = true
-
-        try {
-          const currentState = useEditorStore.getState()
-          if (!currentState.hydrated) return
-
-          const result = await saveDocument(currentState)
-
-          if (result) {
-            const latestState = useEditorStore.getState()
-            if (result.newlyAllocatedTipe) {
-              latestState.setAllocatedNomor(
-                result.newlyAllocatedTipe,
-                result.nomor,
-              )
-            }
-            if (
-              !latestState.nomorManual &&
-              latestState.nomor !== result.nomor
-            ) {
-              latestState.setNomor(result.nomor, false)
-            }
-
-            if (!firstSaveDoneRef.current) {
-              firstSaveDoneRef.current = true
-              requestPersistentStorage()
-            }
-          }
-        } catch (err) {
-          console.error("[auto-save] Gagal menyimpan:", err)
-        } finally {
-          isSavingRef.current = false
-        }
+      activeSaveTimer = setTimeout(() => {
+        activeSaveTimer = null
+        executeSave()
       }, 500)
     })
 
     return () => {
       unsub()
-      if (timerRef.current) {
-        clearTimeout(timerRef.current)
+      if (activeSaveTimer) {
+        clearTimeout(activeSaveTimer)
+        activeSaveTimer = null
       }
     }
   }, [])
