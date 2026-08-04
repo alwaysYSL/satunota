@@ -651,4 +651,103 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
       "Hanya invoice berstatus lunas yang dapat dikonversi menjadi kwitansi",
     )
   })
+
+  it("12. Dokumen aktif di store ditandai lunas, lalu satu penyimpanan otomatis dipicu: dibayar dan sisa TIDAK kembali ke nilai lama (TEST WAJIB)", async () => {
+    const invoiceId = uuidv7()
+    useEditorStore.setState({
+      documentId: invoiceId,
+      hydrated: true,
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+      customerNama: "Toko Harapan",
+      dibayar: 0,
+      items: [
+        {
+          id: uuidv7(),
+          nama: "Peralatan Kantor",
+          qty: 1,
+          satuan: "set",
+          hargaSatuan: 500000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Pastikan store sedang membuka invoice ini dengan dibayar = 0
+    expect(useEditorStore.getState().documentId).toBe(invoiceId)
+    expect(useEditorStore.getState().dibayar).toBe(0)
+
+    // Tandai lunas lewat updateDocumentStatus
+    await updateDocumentStatus(invoiceId, "lunas")
+
+    // Store HARUS tersinkronisasi menjadi dibayar = 500000
+    expect(useEditorStore.getState().dibayar).toBe(500000)
+
+    // Picu simpan otomatis berikutnya (misal pengguna mengetik catatan)
+    useEditorStore.setState({ catatan: "Catatan setelah lunas" })
+    await saveDocument(useEditorStore.getState())
+
+    // Cek di Dexie: status tetap 'lunas', dibayar tetap 500.000, sisa tetap 0
+    const docInDb = await db.documents.get(invoiceId)
+    expect(docInDb?.status).toBe("lunas")
+    expect(docInDb?.dibayar).toBe(500000)
+    expect(docInDb?.sisa).toBe(0)
+    expect(docInDb?.catatan).toBe("Catatan setelah lunas")
+  })
+
+  it("13. Dokumen yang TIDAK aktif di store ditandai lunas: store tidak terpengaruh sama sekali (TEST WAJIB)", async () => {
+    const docAId = uuidv7()
+    const docBId = uuidv7()
+
+    // Simpan dokumen A ke Dexie
+    useEditorStore.setState({
+      documentId: docAId,
+      hydrated: true,
+      tipe: "invoice",
+      dibayar: 0,
+      items: [
+        {
+          id: uuidv7(),
+          nama: "Barang A",
+          qty: 1,
+          satuan: "pcs",
+          hargaSatuan: 200000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+    await saveDocument(useEditorStore.getState())
+
+    // Pindahkan store ke dokumen B (dokumen A tidak lagi aktif di store)
+    useEditorStore.setState({
+      documentId: docBId,
+      hydrated: true,
+      tipe: "nota",
+      dibayar: 0,
+      items: [
+        {
+          id: uuidv7(),
+          nama: "Barang B",
+          qty: 1,
+          satuan: "pcs",
+          hargaSatuan: 100000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+
+    // Tandai dokumen A sebagai lunas
+    await updateDocumentStatus(docAId, "lunas")
+
+    // Dokumen A di Dexie sudah berstatus lunas dengan dibayar = 200000
+    const docAInDb = await db.documents.get(docAId)
+    expect(docAInDb?.status).toBe("lunas")
+    expect(docAInDb?.dibayar).toBe(200000)
+
+    // Store (yang sedang memegang dokumen B) TIDAK boleh terpengaruh
+    expect(useEditorStore.getState().documentId).toBe(docBId)
+    expect(useEditorStore.getState().dibayar).toBe(0)
+  })
 })

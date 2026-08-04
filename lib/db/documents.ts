@@ -48,6 +48,8 @@ export async function updateDocumentStatus(
   documentId: string,
   newStatus: "terkirim" | "lunas",
 ): Promise<void> {
+  let updatedTotal: number | null = null
+
   await db.transaction("rw", db.documents, async () => {
     const doc = await db.documents.get(documentId)
     if (!doc || doc.deletedAt !== null) return
@@ -62,10 +64,21 @@ export async function updateDocumentStatus(
     if (newStatus === "lunas") {
       updates.dibayar = doc.total
       updates.sisa = 0
+      updatedTotal = doc.total
     }
 
     await db.documents.update(documentId, updates)
   })
+
+  // Sinkronkan Zustand store di LUAR transaksi Dexie jika dokumen ini sedang aktif di editor
+  const store = useEditorStore.getState()
+  if (
+    store.documentId === documentId &&
+    newStatus === "lunas" &&
+    updatedTotal !== null
+  ) {
+    useEditorStore.setState({ dibayar: updatedTotal })
+  }
 }
 
 /**
