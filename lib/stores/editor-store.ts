@@ -177,23 +177,35 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       }
 
       // Reset field-field yang tidak berlaku untuk jenis baru (SRS §5.6)
-      if (tipe !== "invoice") {
+      if (tipe === "invoice") {
+        if (!s.dueDate) {
+          updates.dueDate = s.tanggal || todayISO()
+        }
+      } else {
         updates.dueDate = null
         updates.syarat = ""
         updates.chips = { ...s.chips, showJatuhTempo: false }
       }
-      if (tipe !== "kwitansi") {
-        updates.diterimaDari = ""
-      }
+
       if (tipe === "kwitansi") {
-        // Kwitansi selalu lunas — dibayar akan di-set = total di komponen
-        updates.chips = { ...s.chips, showJatuhTempo: false }
+        if (!s.diterimaDari) {
+          updates.diterimaDari = s.customerNama || "Pelanggan"
+        }
+      } else {
+        updates.diterimaDari = ""
       }
 
       return updates
     }),
 
-  setField: (key, value) => set({ [key]: value }),
+  setField: (key, value) =>
+    set((s) => {
+      const updates: Partial<EditorState> = { [key]: value }
+      if (key === "customerNama" && s.tipe === "kwitansi" && (!s.diterimaDari || s.diterimaDari === "Pelanggan")) {
+        updates.diterimaDari = typeof value === "string" ? value : ""
+      }
+      return updates
+    }),
 
   setNomor: (nomor, manual) => set({ nomor, nomorManual: manual }),
 
@@ -331,16 +343,39 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
 
     // 2. Validasi dokumen lengkap dengan documentSchema
     const placeholderUuid = "00000000-0000-0000-0000-000000000000"
+
+    const effectiveDueDate =
+      s.tipe === "invoice" ? s.dueDate || s.tanggal || todayISO() : null
+    const effectiveDiterimaDari =
+      s.tipe === "kwitansi"
+        ? s.diterimaDari && s.diterimaDari.trim() !== ""
+          ? s.diterimaDari.trim()
+          : s.customerNama.trim() || "Pelanggan"
+        : null
+
+    if (s.tipe === "invoice" && !s.dueDate) {
+      set({ dueDate: effectiveDueDate })
+    }
+    if (s.tipe === "kwitansi" && !s.diterimaDari) {
+      set({ diterimaDari: effectiveDiterimaDari ?? "Pelanggan" })
+    }
+
     const docPayload = {
       id: s.documentId ?? placeholderUuid,
       businessId: placeholderUuid,
       tipe: s.tipe,
-      nomor: s.nomor || "NT-001",
+      nomor:
+        s.nomor ||
+        (s.tipe === "invoice"
+          ? "INV/0001"
+          : s.tipe === "kwitansi"
+            ? "KW/0001"
+            : "NT/0001"),
       tanggal: s.tanggal,
-      dueDate: s.dueDate,
+      dueDate: effectiveDueDate,
       customerId: null,
       customerNama: s.customerNama || null,
-      diterimaDari: s.diterimaDari || null,
+      diterimaDari: effectiveDiterimaDari,
       status: s.tipe === "kwitansi" ? ("lunas" as const) : ("draf" as const),
       diskonTipe: s.diskonTipe,
       diskonNilai: s.diskonNilai,

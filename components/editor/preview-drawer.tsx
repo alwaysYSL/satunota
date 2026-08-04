@@ -39,9 +39,12 @@ function PreviewDrawerContent() {
       tipe: state.tipe,
       nomor: state.nomor,
       tanggal: state.tanggal,
-      dueDate: state.dueDate,
+      dueDate: state.tipe === "invoice" ? (state.dueDate || state.tanggal) : null,
       customerNama: state.customerNama,
-      diterimaDari: state.diterimaDari,
+      diterimaDari:
+        state.tipe === "kwitansi"
+          ? state.diterimaDari || state.customerNama || "Pelanggan"
+          : "",
       catatan: state.catatan,
       syarat: state.syarat,
       businessNama: state.businessNama,

@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+import { History } from "lucide-react"
 import { NotionInput, NotionCurrencyInput } from "@/components/editor/notion-input"
 import { DocTypeSelector } from "@/components/editor/doc-type-selector"
 import { ItemList } from "@/components/editor/item-list"
@@ -9,6 +11,9 @@ import { ActionBar } from "@/components/editor/action-bar"
 import { PreviewDrawer } from "@/components/editor/preview-drawer"
 import { useEditorStore } from "@/lib/stores/editor-store"
 import { useAutoSave } from "@/lib/hooks/use-auto-save"
+
+import { createNewDocumentDraft } from "@/lib/db/draft"
+import { Plus } from "lucide-react"
 
 export default function EditorPage() {
   // ─── Auto-save ke IndexedDB dengan debounce 500ms ─────
@@ -26,9 +31,37 @@ export default function EditorPage() {
   const setField = useEditorStore((s) => s.setField)
   const setNomor = useEditorStore((s) => s.setNomor)
 
+  const handleCreateNew = async () => {
+    await createNewDocumentDraft()
+  }
+
   return (
     <>
       <main className="mx-auto w-full max-w-[720px] pb-24 px-4">
+        {/* ─── Top Bar Navigasi ────────────────────────── */}
+        <div className="flex items-center justify-between py-2 border-b border-line">
+          <span className="text-[13px] font-bold text-fg tracking-wide">
+            SATUNOTA
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCreateNew}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+            >
+              <Plus className="size-4" />
+              <span>Buat Baru</span>
+            </button>
+            <Link
+              href="/dokumen/riwayat"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+            >
+              <History className="size-4" />
+              <span>Riwayat</span>
+            </Link>
+          </div>
+        </div>
+
         {/* ─── Identitas Usaha (DESIGN §7.1) ──────────── */}
         <section className="py-4 border-b border-line flex flex-col gap-2">
           <div>

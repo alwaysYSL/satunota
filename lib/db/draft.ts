@@ -25,7 +25,7 @@ export async function hydrateDraft(): Promise<string> {
 
   const businessId = await ensureGuestBusiness()
 
-  // 1. Muat identitas usaha dari tabel businesses (MASALAH 3)
+  // 1. Muat identitas usaha dari tabel businesses
   const biz = await db.businesses.get(businessId)
   if (biz) {
     useEditorStore.setState({
@@ -63,3 +63,31 @@ export async function hydrateDraft(): Promise<string> {
   return draftId
 }
 
+/**
+ * Buat draf dokumen baru dengan UUID v7 baru.
+ * Memperbarui meta."activeDraftId" ke ID baru ini dan mereset Zustand store.
+ * Ini memastikan dokumen baru tidak menimpa dokumen sebelumnya di riwayat.
+ */
+export async function createNewDocumentDraft(): Promise<string> {
+  const newDraftId = uuidv7()
+  await db.meta.put({ key: "activeDraftId", value: newDraftId })
+  const store = useEditorStore.getState()
+  store.resetDocument()
+  useEditorStore.setState({ documentId: newDraftId, hydrated: true })
+  return newDraftId
+}
+
+/**
+ * Buka dokumen tersimpan dari riwayat sebagai activeDraftId dan muat ke editor store.
+ */
+export async function openDocumentDraft(docId: string): Promise<void> {
+  await db.meta.put({ key: "activeDraftId", value: docId })
+  const doc = await db.documents.get(docId)
+  if (doc && !doc.deletedAt) {
+    const items = await db.documentItems
+      .where("documentId")
+      .equals(docId)
+      .sortBy("urutan")
+    useEditorStore.getState().loadDocument(doc, items)
+  }
+}

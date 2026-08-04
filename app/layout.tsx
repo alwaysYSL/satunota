@@ -14,6 +14,8 @@ export const metadata: Metadata = {
     "Aplikasi web pembuat nota, invoice, dan kwitansi. Tanpa daftar, tanpa iklan, tanpa watermark. Langsung buat, unduh PDF, atau cetak.",
 };
 
+import { SwRegister } from "@/components/sw-register";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -21,7 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={`${inter.variable} font-sans`}>
-      <body className="min-h-dvh flex flex-col">{children}</body>
+      <body className="min-h-dvh flex flex-col">
+        <SwRegister />
+        {children}
+      </body>
     </html>
   );
 }
