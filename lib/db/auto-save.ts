@@ -4,7 +4,7 @@
 
 import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
-import { reserveDocNomor } from "./doc-numbering"
+import { ensureNomorForDraft } from "./doc-numbering-owner"
 import { calc, type CalcInput } from "@/lib/calc"
 import type { EditorState } from "@/lib/stores/editor-store"
 
@@ -51,18 +51,10 @@ function buildCalcInputFromState(s: EditorState): CalcInput {
 /**
  * Simpan dokumen dari editor ke Dexie dalam SATU transaksi.
  *
- * ATURAN KERAS:
- * 1. Simpan berhenti total selama state.hydrated === false.
- * 2. Dokumen beserta seluruh barisnya ditulis sebagai satu transaksi.
- *    Baris yang dihapus pengguna dihapus dari database (tidak meninggalkan baris yatim).
- * 3. Nomor HANYA dialokasikan satu kali per jenis dokumen per draf di database.
- * 4. Identitas usaha (nama, alamat, telepon) disimpan ke tabel businesses milik tamu.
- * 5. meta."docCount" diperbarui saat dokumen baru dibuat (bukan setiap penyimpanan).
- * 6. Angka tetap hanya dari calc(). Simpan hasilnya sebagai snapshot.
- * 7. Subtotal item dipetakan berbasis id item, BUKAN indeks.
- * 8. Status dipertahankan dari dokumen yang sudah ada (tidak menimpa status ke 'draf').
- * 9. sourceDocumentId & customerId dipertahankan dari dokumen yang sudah ada.
- * 10. Menolak penulisan dokumen yang deletedAt-nya tidak null.
+ * PERUBAHAN PEMILIK TUNGGAL NOMOR:
+ * saveDocument tidak lagi pernah memutuskan nomor (semua cabang penentuan nomor dihapus).
+ * Ia memakai state.nomor apa adanya bila state.nomorManual true, dan sebaliknya
+ * memanggil ensureNomorForDraft(docId, state.tipe) SEBELUM transaksi dibuka.
  */
 export async function saveDocument(
   state: EditorState,
@@ -74,15 +66,20 @@ export async function saveDocument(
   const businessId = await ensureGuestBusiness()
   const docId = state.documentId
 
+  // Dapatkan nomor dari pemilik keputusan nomor tunggal sebelum transaksi
+  let finalNomor: string
+  if (state.nomorManual && state.nomor.trim() !== "") {
+    finalNomor = state.nomor
+  } else {
+    finalNomor = await ensureNomorForDraft(docId, state.tipe)
+  }
+
   // Hitung angka snapshot lewat calc()
   const calcInput = buildCalcInputFromState(state)
   const result = calc(calcInput)
 
   const now = new Date().toISOString()
-  let finalNomor = state.nomor
   let isNewDoc = false
-  let newlyAllocatedTipe: "nota" | "invoice" | "kwitansi" | null = null
-
   let wasAborted = false
 
   // Eksekusi penulisan identitas usaha, dokumen, item, dan meta dalam SATU transaksi Dexie
@@ -92,10 +89,19 @@ export async function saveDocument(
     async () => {
       const existingDoc = await db.documents.get(docId)
 
-      // MASALAH 4: Menolak menyimpan dokumen yang deletedAt-nya sudah terisi
+      // Menolak menyimpan dokumen yang deletedAt-nya sudah terisi
       if (existingDoc && existingDoc.deletedAt !== null) {
         wasAborted = true
         return
+      }
+
+      if (!existingDoc) {
+        isNewDoc = true
+        // Perbarui meta."docCount" untuk dokumen baru (SCHEMA.md §6.1)
+        const docCountEntry = await db.meta.get("docCount")
+        const currentCount =
+          typeof docCountEntry?.value === "number" ? docCountEntry.value : 0
+        await db.meta.put({ key: "docCount", value: currentCount + 1 })
       }
 
       // 1. Simpan/perbarui identitas usaha di tabel businesses
@@ -110,77 +116,12 @@ export async function saveDocument(
         })
       }
 
-      // 2. Tentukan nomor dokumen (ATURAN 1, 2, 5)
-      const draftNomorKey = `draftNomor:${docId}`
-      const draftNomorEntry = await db.meta.get(draftNomorKey)
-      let draftMap: Partial<Record<"nota" | "invoice" | "kwitansi", string>> = {}
-      if (draftNomorEntry && typeof draftNomorEntry.value === "string") {
-        try {
-          draftMap = JSON.parse(draftNomorEntry.value)
-        } catch {
-          draftMap = {}
-        }
-      }
-
-      if (!existingDoc) {
-        // DOKUMEN BARU PERTAMA KALI DISIMPAN KE DATABASE
-        isNewDoc = true
-
-        if (state.nomorManual && state.nomor.trim() !== "") {
-          // Nomor diisi manual oleh pengguna — tidak menaikkan nextSeq
-          finalNomor = state.nomor
-        } else if (draftMap[state.tipe]) {
-          // ATURAN 2: Jika jenis ini sudah punya nomor di draftNomorMap, PAKAI nomor itu
-          finalNomor = draftMap[state.tipe]!
-        } else if (state.allocatedNomor[state.tipe]) {
-          finalNomor = state.allocatedNomor[state.tipe]!
-          draftMap[state.tipe] = finalNomor
-          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
-        } else {
-          // Memesan nomor resmi (reserve) TEPAT SATU KALI di dalam transaksi Dexie yang sama
-          finalNomor = await reserveDocNomor(businessId, state.tipe)
-          newlyAllocatedTipe = state.tipe
-          draftMap[state.tipe] = finalNomor
-          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
-        }
-
-        // Perbarui meta."docCount" untuk dokumen baru (SCHEMA.md §6.1)
-        const docCountEntry = await db.meta.get("docCount")
-        const currentCount =
-          typeof docCountEntry?.value === "number" ? docCountEntry.value : 0
-        await db.meta.put({ key: "docCount", value: currentCount + 1 })
-      } else {
-        // DOKUMEN SUDAH ADA DI DATABASE
-        if (state.nomorManual && state.nomor.trim() !== "") {
-          finalNomor = state.nomor
-        } else if (existingDoc.tipe === state.tipe && existingDoc.nomor) {
-          finalNomor = existingDoc.nomor
-          if (!draftMap[state.tipe]) {
-            draftMap[state.tipe] = finalNomor
-            await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
-          }
-        } else if (draftMap[state.tipe]) {
-          // ATURAN 2: Jika draf ini sudah punya nomor untuk jenis ini di meta, PAKAI nomor itu
-          finalNomor = draftMap[state.tipe]!
-        } else if (state.allocatedNomor[state.tipe]) {
-          finalNomor = state.allocatedNomor[state.tipe]!
-          draftMap[state.tipe] = finalNomor
-          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
-        } else {
-          // Memesan nomor untuk jenis baru pada draf tersimpan
-          finalNomor = await reserveDocNomor(businessId, state.tipe)
-          newlyAllocatedTipe = state.tipe
-          draftMap[state.tipe] = finalNomor
-          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
-        }
-      }
-
       // Hitung dibayar dan sisa
       const total = result.total
       const dibayar = state.tipe === "kwitansi" ? total : state.dibayar
       const sisa = state.tipe === "kwitansi" ? 0 : result.sisa
 
-      // MASALAH B: Reset status ke 'draf' jika tipe dokumen berubah (kwitansi tetap 'lunas')
+      // Reset status ke 'draf' jika tipe dokumen berubah (kwitansi tetap 'lunas')
       let finalStatus: LocalDocument["status"] = "draf"
       if (state.tipe === "kwitansi") {
         finalStatus = "lunas"
@@ -190,7 +131,7 @@ export async function saveDocument(
         finalStatus = "draf"
       }
 
-      // MASALAH 3: Pertahankan customerId & sourceDocumentId yang sudah ada jika tipe sama
+      // Pertahankan customerId & sourceDocumentId yang sudah ada jika tipe sama
       const finalCustomerId = existingDoc ? existingDoc.customerId : null
       const finalSourceDocumentId =
         existingDoc && existingDoc.tipe === state.tipe
@@ -231,7 +172,7 @@ export async function saveDocument(
         deletedAt: null,
       }
 
-      // MASALAH C: Pemetaan subtotal berbasis ID item memakai isActiveItem
+      // Pemetaan subtotal berbasis ID item memakai isActiveItem
       const activeItems = state.items.filter(isActiveItem)
       const itemSubtotalMap = new Map<string, number>()
       activeItems.forEach((item, activeIdx) => {
@@ -271,6 +212,6 @@ export async function saveDocument(
     documentId: docId,
     nomor: finalNomor,
     isNewDoc,
-    newlyAllocatedTipe,
+    newlyAllocatedTipe: null,
   }
 }

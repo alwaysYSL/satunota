@@ -36,12 +36,24 @@ async function requestPersistentStorage(): Promise<void> {
   }
 }
 
+// Module-level hydration deduplication promise (React Strict Mode safety)
+let pendingHydration: Promise<string> | null = null
+
+export function safeHydrateDraft(): Promise<string> {
+  if (!pendingHydration) {
+    pendingHydration = hydrateDraft().finally(() => {
+      // Biarkan pendingHydration tersimpan agar pemanggilan berurutan tetap aman
+    })
+  }
+  return pendingHydration
+}
+
 export function useAutoSave(): void {
   const firstSaveDoneRef = useRef(false)
 
-  // 1. Jalankan hidrasi dari Dexie saat mounting
+  // 1. Jalankan hidrasi dari Dexie saat mounting (ter-deduplikasi)
   useEffect(() => {
-    hydrateDraft().catch((err) => {
+    safeHydrateDraft().catch((err) => {
       console.error("[hydrateDraft] Gagal memuat draf:", err)
     })
   }, [])
@@ -71,6 +83,8 @@ export function useAutoSave(): void {
               result.nomor,
             )
           }
+
+          // Setelah simpan berhasil, JANGAN memanggil setNomor bila result.nomor sama dengan nomor di store
           if (
             !latestState.nomorManual &&
             latestState.nomor !== result.nomor
@@ -87,7 +101,6 @@ export function useAutoSave(): void {
         console.error("[auto-save] Gagal menyimpan:", err)
       } finally {
         setIsSaving(false)
-        // MASALAH 5: Jika ada perubahan baru saat penyimpanan berlangsung, jalankan ulang segera
         if (getHasPendingSave()) {
           setHasPendingSave(false)
           executeSave()

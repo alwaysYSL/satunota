@@ -2,9 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { type DocType, useEditorStore } from "@/lib/stores/editor-store"
-import { db } from "@/lib/db/local"
-import { ensureGuestBusiness } from "@/lib/db/guest"
-import { peekDocNomor } from "@/lib/db/doc-numbering"
+import { ensureNomorForDraft } from "@/lib/db/doc-numbering-owner"
 
 const DOC_TYPES: { value: DocType; label: string }[] = [
   { value: "nota", label: "Nota" },
@@ -15,33 +13,17 @@ const DOC_TYPES: { value: DocType; label: string }[] = [
 export function DocTypeSelector() {
   const tipe = useEditorStore((s) => s.tipe)
   const setTipe = useEditorStore((s) => s.setTipe)
-  const documentId = useEditorStore((s) => s.documentId)
+  const setNomor = useEditorStore((s) => s.setNomor)
 
   const handleSelectTipe = async (newTipe: DocType) => {
     setTipe(newTipe)
     const state = useEditorStore.getState()
-
-    // ATURAN 4: Untuk jenis yang belum pernah punya nomor pada draf ini,
-    // nomor yang ditampilkan di editor WAJIB berasal dari peekDocNomor.
-    // setTipe tidak boleh membiarkan kolom nomor kosong.
-    if (!state.nomorManual) {
-      if (state.allocatedNomor[newTipe]) {
-        useEditorStore.setState({ nomor: state.allocatedNomor[newTipe] })
-        return
-      }
-      if (documentId) {
-        const existing = await db.documents.get(documentId)
-        if (existing && existing.tipe === newTipe && existing.nomor) {
-          useEditorStore.setState({ nomor: existing.nomor })
-          return
-        }
-      }
+    if (state.documentId && !state.nomorManual) {
       try {
-        const businessId = await ensureGuestBusiness()
-        const peeked = await peekDocNomor(businessId, newTipe)
-        useEditorStore.setState({ nomor: peeked })
+        const nomor = await ensureNomorForDraft(state.documentId, newTipe)
+        setNomor(nomor, false)
       } catch (err) {
-        console.error("[DocTypeSelector] Gagal mengintip nomor:", err)
+        console.error("[DocTypeSelector] Gagal memastikan nomor:", err)
       }
     }
   }
