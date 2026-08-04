@@ -33,6 +33,8 @@ Dokumen turunan dari SRS v1.1. Rencana ini ditulis untuk pengembangan dengan ban
 /docs/SRS.md        → salinan SRS v1.1
 /docs/SCHEMA.md     → salinan dokumen skema
 /docs/DESIGN.md     → token warna, tipografi, komponen
+/docs/ROADMAP.md    → Roadmap
+/docs/PRICING.md    → Feature
 ```
 
 <aside>

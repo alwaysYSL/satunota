@@ -1,0 +1,108 @@
+"use client"
+
+import { useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { Button } from "@/components/ui/button"
+import { Mail } from "lucide-react"
+
+export default function MasukPage() {
+  const [email, setEmail] = useState("")
+  const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const supabase = createClient()
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+
+    setLoading(false)
+
+    if (authError) {
+      setError("Gagal mengirim tautan masuk. Coba lagi.")
+      return
+    }
+
+    setSent(true)
+  }
+
+  return (
+    <main className="flex min-h-dvh items-center justify-center px-[var(--space-4)]">
+      <div className="w-full max-w-[360px]">
+        <h1 className="text-[28px] font-bold leading-[1.2] tracking-[-0.02em] text-fg mb-[var(--space-2)]">
+          Masuk ke SATUNOTA
+        </h1>
+        <p className="text-fg-secondary text-[16px] leading-[1.5] mb-[var(--space-6)]">
+          Masukkan email untuk menerima tautan masuk. Tanpa kata sandi.
+        </p>
+
+        {sent ? (
+          <div className="rounded-md bg-brand-subtle p-[var(--space-4)]">
+            <div className="flex items-start gap-[var(--space-3)]">
+              <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
+              <div>
+                <p className="text-fg text-[16px] font-medium leading-[1.5]">
+                  Tautan masuk sudah dikirim ke emailmu
+                </p>
+                <p className="text-fg-secondary text-[13px] leading-[1.4] mt-[var(--space-1)]">
+                  Buka email <span className="font-medium text-fg">{email}</span> dan klik tautannya untuk masuk.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-[var(--space-4)]">
+            <div>
+              <label
+                htmlFor="email-input"
+                className="block text-[13px] font-medium leading-[1.4] text-fg-secondary mb-[var(--space-1)]"
+              >
+                Email
+              </label>
+              <input
+                id="email-input"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nama@contoh.com"
+                className="w-full rounded-md border border-line-strong bg-bg px-[var(--space-3)] py-[var(--space-3)] text-[16px] text-fg placeholder:text-fg-tertiary focus:border-brand focus:outline-none transition-colors duration-[20ms] ease-in"
+                style={{ minHeight: "44px" }}
+              />
+            </div>
+
+            {error && (
+              <p className="text-[13px] text-danger leading-[1.4]">{error}</p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={loading || !email}
+              className="w-full"
+              style={{ minHeight: "44px" }}
+            >
+              {loading ? "Mengirim..." : "Kirim tautan masuk"}
+            </Button>
+          </form>
+        )}
+
+        <div className="mt-[var(--space-6)] text-center">
+          <a
+            href="/"
+            className="text-[13px] text-fg-secondary hover:text-fg transition-colors duration-[20ms] ease-in"
+          >
+            Kembali ke editor
+          </a>
+        </div>
+      </div>
+    </main>
+  )
+}

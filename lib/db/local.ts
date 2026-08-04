@@ -23,6 +23,7 @@ export type LocalBusiness = {
   qrisUrl: string | null
   rekening: string | null
   ttdUrl: string | null
+  plan: "guest" | "free" | "pro"
   createdAt: string
   updatedAt: string
 }
@@ -146,6 +147,29 @@ db.version(1).stores({
   payments:      "id, documentId, tanggal",
   outbox:        "id, entity, entityId, createdAt, attempts",
   meta:          "key",
+})
+
+// v2: tambah kolom plan pada businesses. Indeks tidak berubah.
+// JANGAN mengubah db.version(1) di atas.
+db.version(2).stores({
+  businesses:    "id, userId, updatedAt",
+  customers:     "id, businessId, nama, updatedAt, deletedAt",
+  products:      "id, businessId, nama, updatedAt, deletedAt",
+  documents:     "id, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
+  documentItems: "id, documentId, urutan",
+  payments:      "id, documentId, tanggal",
+  outbox:        "id, entity, entityId, createdAt, attempts",
+  meta:          "key",
+}).upgrade(async (tx) => {
+  // Pastikan setiap businesses punya userId dan plan
+  await tx.table("businesses").toCollection().modify((biz: Record<string, unknown>) => {
+    if (biz.userId === undefined) {
+      biz.userId = null
+    }
+    if ((biz as Record<string, unknown>).plan === undefined) {
+      (biz as Record<string, unknown>).plan = "guest"
+    }
+  })
 })
 
 if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {

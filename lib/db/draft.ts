@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from "uuid"
 import { db } from "./local"
 import { ensureGuestBusiness } from "./guest"
 import { useEditorStore } from "@/lib/stores/editor-store"
+import { peekDocNomor } from "./doc-numbering"
 
 /**
  * Panggil saat aplikasi / editor dibuka untuk memuat draf aktif dari Dexie.
@@ -14,6 +15,7 @@ import { useEditorStore } from "@/lib/stores/editor-store"
  * - Jika draf belum tersimpan di db.documents atau meta."activeDraftId" belum ada:
  *   gunakan activeDraftId tersebut (atau buat UUID v7 baru) sebagai documentId,
  *   simpan ke meta."activeDraftId", dan tandai hydrated = true.
+ *   Nomor ditampilkan menggunakan peekDocNomor (tanpa menaikkan nextSeq).
  *
  * PENTING: Simpan otomatis WAJIB berhenti total sampai hidrasi selesai.
  */
@@ -59,7 +61,13 @@ export async function hydrateDraft(): Promise<string> {
     await db.meta.put({ key: "activeDraftId", value: draftId })
   }
 
-  useEditorStore.setState({ documentId: draftId, hydrated: true })
+  const peekedNomor = await peekDocNomor(businessId, store.tipe)
+
+  useEditorStore.setState({
+    documentId: draftId,
+    nomor: store.nomor || peekedNomor,
+    hydrated: true,
+  })
   return draftId
 }
 
@@ -73,7 +81,9 @@ export async function createNewDocumentDraft(): Promise<string> {
   await db.meta.put({ key: "activeDraftId", value: newDraftId })
   const store = useEditorStore.getState()
   store.resetDocument()
-  useEditorStore.setState({ documentId: newDraftId, hydrated: true })
+  const businessId = await ensureGuestBusiness()
+  const peekedNomor = await peekDocNomor(businessId, "nota")
+  useEditorStore.setState({ documentId: newDraftId, nomor: peekedNomor, hydrated: true })
   return newDraftId
 }
 

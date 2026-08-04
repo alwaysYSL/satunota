@@ -4,7 +4,7 @@
 
 import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
-import { generateDocNomor } from "./doc-numbering"
+import { reserveDocNomor } from "./doc-numbering"
 import { calc, type CalcInput } from "@/lib/calc"
 import type { EditorState } from "@/lib/stores/editor-store"
 
@@ -116,11 +116,11 @@ export async function saveDocument(
         isNewDoc = true
 
         if (state.nomorManual && state.nomor.trim() !== "") {
+          // Nomor diisi manual oleh pengguna — tidak menaikkan nextSeq
           finalNomor = state.nomor
-        } else if (state.allocatedNomor[state.tipe]) {
-          finalNomor = state.allocatedNomor[state.tipe]!
         } else {
-          finalNomor = await generateDocNomor(businessId, state.tipe)
+          // Memesan nomor resmi (reserve) TEPAT SATU KALI di dalam transaksi Dexie yang sama
+          finalNomor = await reserveDocNomor(businessId, state.tipe)
           newlyAllocatedTipe = state.tipe
         }
 
@@ -130,15 +130,14 @@ export async function saveDocument(
           typeof docCountEntry?.value === "number" ? docCountEntry.value : 0
         await db.meta.put({ key: "docCount", value: currentCount + 1 })
       } else {
-        // DOKUMEN SUDAH ADA DI DATABASE
+        // DOKUMEN SUDAH ADA DI DATABASE — gunakan nomor yang tersimpan
         if (state.nomorManual && state.nomor.trim() !== "") {
           finalNomor = state.nomor
-        } else if (state.allocatedNomor[state.tipe]) {
-          finalNomor = state.allocatedNomor[state.tipe]!
         } else if (existingDoc.tipe === state.tipe && existingDoc.nomor) {
           finalNomor = existingDoc.nomor
         } else {
-          finalNomor = await generateDocNomor(businessId, state.tipe)
+          // Tipe dokumen berubah pada dokumen tersimpan
+          finalNomor = await reserveDocNomor(businessId, state.tipe)
           newlyAllocatedTipe = state.tipe
         }
       }

@@ -5,7 +5,7 @@
 import { db } from "./local"
 import { generateNomor } from "@/lib/numbering"
 
-type DocType = "nota" | "invoice" | "kwitansi"
+export type DocType = "nota" | "invoice" | "kwitansi"
 
 function seqKey(tipe: DocType): string {
   return `nextSeq:${tipe}`
@@ -30,15 +30,12 @@ function getPolaFromBusiness(
 }
 
 /**
- * Generate nomor dokumen baru berdasarkan pola dan nextSeq dari meta.
- * Reset otomatis saat bulan berganti jika pola mengandung {MM}.
- *
- * ATURAN:
- * - Sumber urutan: meta."nextSeq:<tipe>", bukan hitungan baris database
- * - Reset: otomatis kembali ke 1 saat bulan berganti, bila pola mengandung {MM}
- * - Nomor yang diubah manual tidak menaikkan nextSeq
+ * 1. Melihat (peek)
+ * Mengembalikan nomor berikutnya untuk sebuah jenis TANPA menulis apa pun ke tabel meta.
+ * Tidak menaikkan nextSeq, tidak menulis lastSeqMonth.
+ * Dipakai untuk menampilkan nomor di editor selama dokumen belum pernah tersimpan.
  */
-export async function generateDocNomor(
+export async function peekDocNomor(
   businessId: string,
   tipe: DocType,
 ): Promise<string> {
@@ -52,34 +49,75 @@ export async function generateDocNomor(
   const hari = now.getDate()
   const currentMonth = `${tahun}-${String(bulan).padStart(2, "0")}`
 
-  let nextSeq: number
+  const seqEntry = await db.meta.get(seqKey(tipe))
+  const monthEntry = await db.meta.get(monthKey(tipe))
 
-  await db.transaction("rw", db.meta, async () => {
-    const seqEntry = await db.meta.get(seqKey(tipe))
-    const monthEntry = await db.meta.get(monthKey(tipe))
+  let nextSeq = typeof seqEntry?.value === "number" ? seqEntry.value : 1
+  const lastMonth = typeof monthEntry?.value === "string" ? monthEntry.value : null
 
-    nextSeq = typeof seqEntry?.value === "number" ? seqEntry.value : 1
-    const lastMonth = typeof monthEntry?.value === "string" ? monthEntry.value : null
+  // Tampilkan reset 1 jika bulan berganti dan pola mengandung {MM} (TANPA me-write ke meta)
+  if (pola.includes("{MM}") && lastMonth !== null && lastMonth !== currentMonth) {
+    nextSeq = 1
+  }
 
-    // Reset jika bulan berganti dan pola mengandung {MM}
-    if (pola.includes("{MM}") && lastMonth !== null && lastMonth !== currentMonth) {
-      nextSeq = 1
-    }
-
-    // Simpan seq yang dinaikkan dan bulan saat ini
-    await db.meta.bulkPut([
-      { key: seqKey(tipe), value: nextSeq! + 1 },
-      { key: monthKey(tipe), value: currentMonth },
-    ])
-  })
-
-  const nomor = generateNomor({
+  return generateNomor({
     pola,
-    nextSeq: nextSeq!,
+    nextSeq,
     tahun,
     bulan,
     hari,
   })
-
-  return nomor
 }
+
+/**
+ * 2. Memesan (reserve)
+ * Menaikkan nextSeq:<tipe> dan menulis lastSeqMonth:<tipe>.
+ * Dipanggil TEPAT SATU KALI, yaitu di dalam penyimpanan pertama sebuah dokumen baru
+ * (saat isNewDoc bernilai true di lib/db/auto-save.ts), di dalam transaksi Dexie
+ * yang sama dengan penyimpanan dokumennya. Kalau penyimpanan gagal dan transaksi
+ * dibatalkan, nextSeq juga tidak boleh naik.
+ */
+export async function reserveDocNomor(
+  businessId: string,
+  tipe: DocType,
+): Promise<string> {
+  const business = await db.businesses.get(businessId)
+  if (!business) throw new Error("Business tidak ditemukan")
+
+  const pola = getPolaFromBusiness(business, tipe)
+  const now = new Date()
+  const tahun = now.getFullYear()
+  const bulan = now.getMonth() + 1
+  const hari = now.getDate()
+  const currentMonth = `${tahun}-${String(bulan).padStart(2, "0")}`
+
+  const seqEntry = await db.meta.get(seqKey(tipe))
+  const monthEntry = await db.meta.get(monthKey(tipe))
+
+  let nextSeq = typeof seqEntry?.value === "number" ? seqEntry.value : 1
+  const lastMonth = typeof monthEntry?.value === "string" ? monthEntry.value : null
+
+  // Reset jika bulan berganti dan pola mengandung {MM}
+  if (pola.includes("{MM}") && lastMonth !== null && lastMonth !== currentMonth) {
+    nextSeq = 1
+  }
+
+  // Simpan seq yang dinaikkan (+1) dan bulan saat ini ke meta
+  await db.meta.bulkPut([
+    { key: seqKey(tipe), value: nextSeq + 1 },
+    { key: monthKey(tipe), value: currentMonth },
+  ])
+
+  return generateNomor({
+    pola,
+    nextSeq,
+    tahun,
+    bulan,
+    hari,
+  })
+}
+
+/**
+ * Deprecated alias untuk reserveDocNomor (dijaga agar kompatibel).
+ */
+export const generateDocNomor = reserveDocNomor

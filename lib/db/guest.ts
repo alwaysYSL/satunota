@@ -38,6 +38,7 @@ export async function ensureGuestBusiness(): Promise<string> {
       qrisUrl: null,
       rekening: null,
       ttdUrl: null,
+      plan: "guest",
       createdAt: now,
       updatedAt: now,
     })
