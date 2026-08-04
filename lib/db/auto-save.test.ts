@@ -325,4 +325,28 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A & 4B Fixes)", () => {
       "Hanya invoice berstatus lunas yang dapat dikonversi menjadi kwitansi",
     )
   })
+
+  it("10. Dokumen tersimpan berstatus terkirim diubah jenisnya: status kembali draf (TEST WAJIB 3)", async () => {
+    const docId = uuidv7()
+    useEditorStore.setState({
+      documentId: docId,
+      hydrated: true,
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Update status dokumen menjadi 'terkirim' di Dexie
+    await db.documents.update(docId, { status: "terkirim" })
+
+    // Ubah jenis dokumen dari invoice menjadi nota di editor store
+    useEditorStore.setState({ tipe: "nota" })
+    await saveDocument(useEditorStore.getState())
+
+    // Cek di Dexie: karena tipe dokumen berubah dari invoice ke nota, status HARUS kembali ke 'draf'
+    const docInDb = await db.documents.get(docId)
+    expect(docInDb?.tipe).toBe("nota")
+    expect(docInDb?.status).toBe("draf")
+  })
 })

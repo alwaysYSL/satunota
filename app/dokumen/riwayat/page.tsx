@@ -15,6 +15,8 @@ import {
   FileText,
   Edit3,
   X,
+  Send,
+  CheckCircle2,
 } from "lucide-react"
 import { db, type LocalDocument } from "@/lib/db/local"
 import {
@@ -22,6 +24,7 @@ import {
   softDeleteDocument,
   duplicateDocument,
   convertInvoiceToKwitansi,
+  updateDocumentStatus,
   type DisplayStatus,
 } from "@/lib/db/documents"
 import { createNewDocumentDraft, openDocumentDraft } from "@/lib/db/draft"
@@ -119,8 +122,8 @@ export default function HistoryPage() {
     try {
       const newDoc = await duplicateDocument(doc.id)
       showToast(`Dokumen diduplikasi (${newDoc.nomor})`)
-    } catch {
-      showToast("Gagal menduplikasi dokumen")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -129,8 +132,8 @@ export default function HistoryPage() {
     try {
       const kwitansi = await convertInvoiceToKwitansi(doc.id)
       showToast(`Kwitansi berhasil dibuat (${kwitansi.nomor})`)
-    } catch {
-      showToast("Gagal mengonversi ke kwitansi")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -139,16 +142,26 @@ export default function HistoryPage() {
     try {
       await softDeleteDocument(docId)
       showToast("Dokumen berhasil dihapus")
-    } catch {
-      showToast("Gagal menghapus dokumen")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleStatusUpdate(docId: string, newStatus: "terkirim" | "lunas") {
+    setActiveMenuId(null)
+    try {
+      await updateDocumentStatus(docId, newStatus)
+      showToast(`Status berhasil diubah menjadi ${newStatus}`)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 pb-24 pt-4 text-[#37352F]">
-      {/* Toast Notifikasi (Notion Toast Style) */}
+    <div className="mx-auto w-full max-w-[720px] px-4 pb-24 pt-4 text-fg">
+      {/* Toast Notifikasi (MASALAH E: Token CSS) */}
       {toastMsg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-[#37352F] text-white text-[13px] px-4 py-2 rounded-md shadow-md animate-in fade-in slide-in-from-top-2 flex items-center gap-2">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-fg text-bg text-[13px] px-4 py-2 rounded-md shadow-md animate-in fade-in slide-in-from-top-2 flex items-center gap-2">
           <span>{toastMsg}</span>
         </div>
       )}
@@ -158,7 +171,7 @@ export default function HistoryPage() {
         <div className="flex items-center gap-2">
           <Link
             href="/"
-            className="flex items-center justify-center h-10 w-10 rounded-md hover:bg-bg-hover text-fg-secondary transition-colors"
+            className="flex items-center justify-center h-11 w-11 rounded-md hover:bg-bg-hover text-fg-secondary transition-colors"
             aria-label="Kembali ke editor"
           >
             <ChevronLeft className="size-5" />
@@ -201,14 +214,14 @@ export default function HistoryPage() {
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary hover:text-fg p-1"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary hover:text-fg p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <X className="size-4" />
             </button>
           )}
         </div>
 
-        {/* Filter Pills (Jenis & Status) */}
+        {/* Filter Pills (Jenis & Status) (MASALAH E & F) */}
         <div className="flex flex-col gap-2">
           {/* Tipe Dokumen */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -221,9 +234,9 @@ export default function HistoryPage() {
                 type="button"
                 onClick={() => setTypeFilter(t)}
                 className={cn(
-                  "px-3 py-1 text-[13px] font-medium rounded-md border transition-colors capitalize shrink-0 min-h-[36px]",
+                  "px-3 py-1 text-[13px] font-medium rounded-md border transition-colors capitalize shrink-0 min-h-[44px] flex items-center",
                   typeFilter === t
-                    ? "bg-[#37352F] text-white border-[#37352F]"
+                    ? "bg-fg text-bg border-fg"
                     : "bg-bg-subtle text-fg-secondary border-transparent hover:bg-bg-hover hover:text-fg",
                 )}
               >
@@ -252,9 +265,9 @@ export default function HistoryPage() {
                 type="button"
                 onClick={() => setStatusFilter(st)}
                 className={cn(
-                  "px-3 py-1 text-[13px] font-medium rounded-md border transition-colors capitalize shrink-0 min-h-[36px]",
+                  "px-3 py-1 text-[13px] font-medium rounded-md border transition-colors capitalize shrink-0 min-h-[44px] flex items-center",
                   statusFilter === st
-                    ? "bg-[#37352F] text-white border-[#37352F]"
+                    ? "bg-fg text-bg border-fg"
                     : "bg-bg-subtle text-fg-secondary border-transparent hover:bg-bg-hover hover:text-fg",
                 )}
               >
@@ -285,7 +298,7 @@ export default function HistoryPage() {
           <button
             type="button"
             onClick={handleCreateNew}
-            className="px-4 py-2 bg-[#37352F] text-white text-[13px] font-medium rounded-md hover:bg-[#2F2D28] min-h-[44px] flex items-center gap-1.5 transition-colors"
+            className="px-4 py-2 bg-fg text-bg hover:opacity-90 text-[13px] font-medium rounded-md min-h-[44px] flex items-center gap-1.5 transition-colors"
           >
             <Plus className="size-4" />
             <span>Buat Dokumen Baru</span>
@@ -353,7 +366,7 @@ export default function HistoryPage() {
                             {formatRupiah(doc.total)}
                           </div>
                           {doc.tipe !== "kwitansi" && doc.sisa > 0 && (
-                            <div className="text-[11px] tnum text-[#CB912F] font-medium">
+                            <div className="text-[11px] tnum text-warning font-medium">
                               Sisa {formatRupiah(doc.sisa)}
                             </div>
                           )}
@@ -368,7 +381,7 @@ export default function HistoryPage() {
                                 activeMenuId === doc.id ? null : doc.id,
                               )
                             }
-                            className="flex h-[40px] w-[40px] items-center justify-center rounded-md text-fg-secondary hover:bg-bg-subtle hover:text-fg transition-colors"
+                            className="flex h-[44px] w-[44px] items-center justify-center rounded-md text-fg-secondary hover:bg-bg-subtle hover:text-fg transition-colors"
                             aria-label="Menu aksi"
                           >
                             <MoreVertical className="size-4" />
@@ -397,6 +410,33 @@ export default function HistoryPage() {
                                 <Copy className="size-4 text-fg-secondary" />
                                 <span>Duplikat</span>
                               </button>
+
+                              {/* Aksi Status Minimal (MASALAH A) */}
+                              {doc.tipe !== "kwitansi" && (
+                                <>
+                                  {doc.status !== "terkirim" && doc.status !== "lunas" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStatusUpdate(doc.id, "terkirim")}
+                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-fg hover:bg-bg-hover transition-colors"
+                                    >
+                                      <Send className="size-4 text-info" />
+                                      <span>Tandai Terkirim</span>
+                                    </button>
+                                  )}
+
+                                  {doc.status !== "lunas" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStatusUpdate(doc.id, "lunas")}
+                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-[13px] text-fg hover:bg-bg-hover transition-colors"
+                                    >
+                                      <CheckCircle2 className="size-4 text-success" />
+                                      <span>Tandai Lunas</span>
+                                    </button>
+                                  )}
+                                </>
+                              )}
 
                               {/* Konversi ke Kwitansi (hanya invoice lunas) */}
                               {doc.tipe === "invoice" && doc.status === "lunas" && (
@@ -437,23 +477,25 @@ export default function HistoryPage() {
 }
 
 /**
- * Status Badge mengikuti panduan warna Notion DESIGN.md §4.5
+ * Status Badge mengikuti token warna Notion (MASALAH E)
  */
 function StatusBadge({ status }: { status: DisplayStatus }) {
-  const styles: Record<DisplayStatus, { text: string; bg: string; label: string }> = {
-    draf: { text: "#787774", bg: "#E3E2E0", label: "Draf" },
-    terkirim: { text: "#337EA9", bg: "#D3E5EF", label: "Terkirim" },
-    sebagian: { text: "#CB912F", bg: "#FDECC8", label: "Sebagian" },
-    lunas: { text: "#448361", bg: "#DBEDDB", label: "Lunas" },
-    jatuh_tempo: { text: "#D44C47", bg: "#FFE2DD", label: "Jatuh Tempo" },
+  const styles: Record<DisplayStatus, { className: string; label: string }> = {
+    draf: { className: "bg-neutral-bg text-neutral", label: "Draf" },
+    terkirim: { className: "bg-info-bg text-info", label: "Terkirim" },
+    sebagian: { className: "bg-warning-bg text-warning", label: "Sebagian" },
+    lunas: { className: "bg-success-bg text-success", label: "Lunas" },
+    jatuh_tempo: { className: "bg-danger-bg text-danger", label: "Jatuh Tempo" },
   }
 
   const s = styles[status]
 
   return (
     <span
-      style={{ color: s.text, backgroundColor: s.bg }}
-      className="inline-flex items-center px-2 py-0.5 rounded-[4px] text-[11px] font-medium leading-none select-none"
+      className={cn(
+        "inline-flex items-center px-2 py-0.5 rounded-[4px] text-[11px] font-medium leading-none select-none",
+        s.className,
+      )}
     >
       {s.label}
     </span>

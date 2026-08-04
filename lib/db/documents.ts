@@ -6,7 +6,7 @@ import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
 import { generateDocNomor } from "./doc-numbering"
 import { createNewDocumentDraft, openDocumentDraft } from "./draft"
-import { cancelPendingAutoSave } from "@/lib/hooks/use-auto-save"
+import { cancelPendingAutoSave } from "./save-queue"
 import { useEditorStore } from "@/lib/stores/editor-store"
 
 export type DisplayStatus =
@@ -36,6 +36,36 @@ export function calculateDisplayStatus(doc: LocalDocument): DisplayStatus {
     }
   }
   return doc.status
+}
+
+/**
+ * Perbarui status dokumen ke 'terkirim' atau 'lunas' (MASALAH A).
+ * - "Tandai lunas" mengisi dibayar = total dan sisa = 0.
+ * - Status 'jatuh_tempo' TIDAK boleh pernah ditulis ke kolom status.
+ * - Tidak menyentuh nextSeq, docCount, atau activeDraftId.
+ */
+export async function updateDocumentStatus(
+  documentId: string,
+  newStatus: "terkirim" | "lunas",
+): Promise<void> {
+  await db.transaction("rw", db.documents, async () => {
+    const doc = await db.documents.get(documentId)
+    if (!doc || doc.deletedAt !== null) return
+    if (doc.tipe === "kwitansi") return // Kwitansi selalu lunas
+
+    const now = new Date().toISOString()
+    const updates: Partial<LocalDocument> = {
+      status: newStatus,
+      updatedAt: now,
+    }
+
+    if (newStatus === "lunas") {
+      updates.dibayar = doc.total
+      updates.sisa = 0
+    }
+
+    await db.documents.update(documentId, updates)
+  })
 }
 
 /**

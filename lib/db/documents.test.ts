@@ -7,6 +7,7 @@ import {
   softDeleteDocument,
   duplicateDocument,
   convertInvoiceToKwitansi,
+  updateDocumentStatus,
 } from "./documents"
 import { saveDocument } from "./auto-save"
 import { hydrateDraft } from "./draft"
@@ -585,5 +586,69 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
     expect((seqNota?.value ?? 1) - 1).toBe(totalNota)
     expect((seqInvoice?.value ?? 1) - 1).toBe(totalInvoice)
     expect((seqKwitansi?.value ?? 1) - 1).toBe(totalKwitansi)
+  })
+
+  it("10. Tandai invoice lunas lalu konversi: berhasil, sourceDocumentId terisi, nomor memakai pola KW/, nextSeq:kwitansi naik tepat 1 (TEST WAJIB 1)", async () => {
+    const invoiceId = uuidv7()
+    useEditorStore.setState({
+      documentId: invoiceId,
+      hydrated: true,
+      tipe: "invoice",
+      dueDate: "2026-08-30",
+      customerNama: "Toko Abadi",
+      items: [
+        {
+          id: uuidv7(),
+          nama: "Laptop",
+          qty: 1,
+          satuan: "unit",
+          hargaSatuan: 12000000,
+          diskonBaris: 0,
+        },
+      ],
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Catat nextSeq:kwitansi sebelum konversi
+    const seqKwitansiBefore = (await db.meta.get("nextSeq:kwitansi"))?.value || 1
+
+    // Tandai lunas via updateDocumentStatus (bukan direct db.documents.update)
+    await updateDocumentStatus(invoiceId, "lunas")
+
+    // Verifikasi invoice berstatus lunas, dibayar = total, sisa = 0
+    const invoiceInDb = await db.documents.get(invoiceId)
+    expect(invoiceInDb?.status).toBe("lunas")
+    expect(invoiceInDb?.dibayar).toBe(12000000)
+    expect(invoiceInDb?.sisa).toBe(0)
+
+    // Konversi invoice lunas ke kwitansi
+    const kwitansi = await convertInvoiceToKwitansi(invoiceId)
+
+    expect(kwitansi.nomor).toContain("KW/")
+    expect(kwitansi.sourceDocumentId).toBe(invoiceId)
+    expect(kwitansi.tipe).toBe("kwitansi")
+    expect(kwitansi.status).toBe("lunas")
+
+    // nextSeq:kwitansi naik tepat 1
+    const seqKwitansiAfter = (await db.meta.get("nextSeq:kwitansi"))?.value
+    expect(seqKwitansiAfter).toBe(seqKwitansiBefore + 1)
+  })
+
+  it("11. Invoice draf dikonversi: ditolak dengan pesan yang jelas (TEST WAJIB 2)", async () => {
+    const invoiceId = uuidv7()
+    useEditorStore.setState({
+      documentId: invoiceId,
+      hydrated: true,
+      tipe: "invoice",
+      customerNama: "Pelanggan Draf",
+    })
+
+    await saveDocument(useEditorStore.getState())
+
+    // Konversi invoice berstatus draf HARUS ditolak
+    await expect(convertInvoiceToKwitansi(invoiceId)).rejects.toThrow(
+      "Hanya invoice berstatus lunas yang dapat dikonversi menjadi kwitansi",
+    )
   })
 })

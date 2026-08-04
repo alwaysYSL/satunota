@@ -16,13 +16,22 @@ export type SaveResult = {
 }
 
 /**
+ * Predikat saringan item aktif (MASALAH C).
+ * Digunakan oleh buildCalcInputFromState dan pemetaan itemSubtotalMap secara bersama.
+ * Keduanya WAJIB identik agar pemetaan subtotal tidak bergeser.
+ */
+export function isActiveItem(item: { nama: string; hargaSatuan: number }): boolean {
+  return item.nama.trim() !== "" || item.hargaSatuan > 0
+}
+
+/**
  * Bangun CalcInput dari state editor.
  * Dipisah agar tidak ada duplikasi rumus — tetap memakai calc().
  */
 function buildCalcInputFromState(s: EditorState): CalcInput {
   return {
     items: s.items
-      .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
+      .filter(isActiveItem)
       .map((it) => ({
         qty: it.qty,
         hargaSatuan: it.hargaSatuan,
@@ -139,19 +148,22 @@ export async function saveDocument(
       const dibayar = state.tipe === "kwitansi" ? total : state.dibayar
       const sisa = state.tipe === "kwitansi" ? 0 : result.sisa
 
-      // MASALAH 2: Pertahankan status dokumen yang sudah ada di Dexie
+      // MASALAH B: Reset status ke 'draf' jika tipe dokumen berubah (kwitansi tetap 'lunas')
       let finalStatus: LocalDocument["status"] = "draf"
       if (state.tipe === "kwitansi") {
         finalStatus = "lunas"
-      } else if (existingDoc) {
+      } else if (existingDoc && existingDoc.tipe === state.tipe) {
         finalStatus = existingDoc.status
       } else {
         finalStatus = "draf"
       }
 
-      // MASALAH 3: Pertahankan customerId & sourceDocumentId yang sudah ada
+      // MASALAH 3: Pertahankan customerId & sourceDocumentId yang sudah ada jika tipe sama
       const finalCustomerId = existingDoc ? existingDoc.customerId : null
-      const finalSourceDocumentId = existingDoc ? existingDoc.sourceDocumentId : null
+      const finalSourceDocumentId =
+        existingDoc && existingDoc.tipe === state.tipe
+          ? existingDoc.sourceDocumentId
+          : null
 
       const doc: LocalDocument = {
         id: docId,
@@ -187,10 +199,8 @@ export async function saveDocument(
         deletedAt: null,
       }
 
-      // MASALAH 1: Pemetaan subtotal berbasis ID item, BUKAN berbasis indeks
-      const activeItems = state.items.filter(
-        (it) => it.nama.trim() !== "" || it.hargaSatuan > 0,
-      )
+      // MASALAH C: Pemetaan subtotal berbasis ID item memakai isActiveItem
+      const activeItems = state.items.filter(isActiveItem)
       const itemSubtotalMap = new Map<string, number>()
       activeItems.forEach((item, activeIdx) => {
         itemSubtotalMap.set(item.id, result.itemSubtotals[activeIdx] ?? 0)

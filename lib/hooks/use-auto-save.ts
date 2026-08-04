@@ -8,6 +8,18 @@ import { useEffect, useRef } from "react"
 import { useEditorStore } from "@/lib/stores/editor-store"
 import { saveDocument } from "@/lib/db/auto-save"
 import { hydrateDraft } from "@/lib/db/draft"
+import {
+  cancelPendingAutoSave,
+  getActiveSaveTimer,
+  setActiveSaveTimer,
+  clearActiveSaveTimer,
+  getHasPendingSave,
+  setHasPendingSave,
+  getIsSaving,
+  setIsSaving,
+} from "@/lib/db/save-queue"
+
+export { cancelPendingAutoSave }
 
 let persistRequested = false
 
@@ -24,23 +36,6 @@ async function requestPersistentStorage(): Promise<void> {
   }
 }
 
-// Module-level reference to handle queued saves and cancellation
-let activeSaveTimer: ReturnType<typeof setTimeout> | null = null
-let hasPendingSave = false
-let isSaving = false
-
-/**
- * Batalkan penyimpanan yang sedang tertunda / diantrekan.
- * Dipanggil saat dokumen disoft-delete agar perubahan terakhir tidak menghidupkan kembali dokumen.
- */
-export function cancelPendingAutoSave(): void {
-  if (activeSaveTimer) {
-    clearTimeout(activeSaveTimer)
-    activeSaveTimer = null
-  }
-  hasPendingSave = false
-}
-
 export function useAutoSave(): void {
   const firstSaveDoneRef = useRef(false)
 
@@ -54,13 +49,13 @@ export function useAutoSave(): void {
   // 2. Berlangganan ke perubahan store di luar siklus render React
   useEffect(() => {
     const executeSave = async () => {
-      if (isSaving) {
-        hasPendingSave = true
+      if (getIsSaving()) {
+        setHasPendingSave(true)
         return
       }
 
-      isSaving = true
-      hasPendingSave = false
+      setIsSaving(true)
+      setHasPendingSave(false)
 
       try {
         const currentState = useEditorStore.getState()
@@ -91,10 +86,10 @@ export function useAutoSave(): void {
       } catch (err) {
         console.error("[auto-save] Gagal menyimpan:", err)
       } finally {
-        isSaving = false
+        setIsSaving(false)
         // MASALAH 5: Jika ada perubahan baru saat penyimpanan berlangsung, jalankan ulang segera
-        if (hasPendingSave) {
-          hasPendingSave = false
+        if (getHasPendingSave()) {
+          setHasPendingSave(false)
           executeSave()
         }
       }
@@ -127,21 +122,19 @@ export function useAutoSave(): void {
 
       if (!contentChanged) return
 
-      if (activeSaveTimer) {
-        clearTimeout(activeSaveTimer)
-      }
+      clearActiveSaveTimer()
 
-      activeSaveTimer = setTimeout(() => {
-        activeSaveTimer = null
+      const timer = setTimeout(() => {
+        setActiveSaveTimer(null)
         executeSave()
       }, 500)
+      setActiveSaveTimer(timer)
     })
 
     return () => {
       unsub()
-      if (activeSaveTimer) {
-        clearTimeout(activeSaveTimer)
-        activeSaveTimer = null
+      if (getActiveSaveTimer()) {
+        clearActiveSaveTimer()
       }
     }
   }, [])
