@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Mail } from "lucide-react"
@@ -10,9 +10,20 @@ export default function MasukPage() {
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [countdown, setCountdown] = useState(0)
+
+  useEffect(() => {
+    if (countdown <= 0) return
+    const timer = setInterval(() => {
+      setCountdown((prev) => prev - 1)
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [countdown])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (countdown > 0) return
+
     setLoading(true)
     setError(null)
 
@@ -27,11 +38,24 @@ export default function MasukPage() {
     setLoading(false)
 
     if (authError) {
-      setError("Gagal mengirim tautan masuk. Coba lagi.")
+      // TAMBAHAN MASALAH 5: Tangani status 429 atau pesan rate limit
+      const isRateLimit =
+        authError.status === 429 ||
+        authError.message.toLowerCase().includes("rate limit")
+
+      if (isRateLimit) {
+        setError(
+          "Terlalu banyak permintaan tautan masuk. Tunggu beberapa menit lalu coba lagi.",
+        )
+      } else {
+        // Tampilkan pesan galat asli dari Supabase di bawah teks ramah
+        setError(`Gagal mengirim tautan masuk: ${authError.message}`)
+      }
       return
     }
 
     setSent(true)
+    setCountdown(60)
   }
 
   return (
@@ -45,18 +69,32 @@ export default function MasukPage() {
         </p>
 
         {sent ? (
-          <div className="rounded-md bg-brand-subtle p-[var(--space-4)]">
-            <div className="flex items-start gap-[var(--space-3)]">
-              <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
-              <div>
-                <p className="text-fg text-[16px] font-medium leading-[1.5]">
-                  Tautan masuk sudah dikirim ke emailmu
-                </p>
-                <p className="text-fg-secondary text-[13px] leading-[1.4] mt-[var(--space-1)]">
-                  Buka email <span className="font-medium text-fg">{email}</span> dan klik tautannya untuk masuk.
-                </p>
+          <div className="space-y-[var(--space-4)]">
+            <div className="rounded-md bg-brand-subtle p-[var(--space-4)]">
+              <div className="flex items-start gap-[var(--space-3)]">
+                <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
+                <div>
+                  <p className="text-fg text-[16px] font-medium leading-[1.5]">
+                    Tautan masuk sudah dikirim ke emailmu
+                  </p>
+                  <p className="text-fg-secondary text-[13px] leading-[1.4] mt-[var(--space-1)]">
+                    Buka email <span className="font-medium text-fg">{email}</span> dan klik tautannya untuk masuk.
+                  </p>
+                </div>
               </div>
             </div>
+
+            <Button
+              type="button"
+              disabled={countdown > 0}
+              onClick={() => setSent(false)}
+              className="w-full"
+              style={{ minHeight: "44px" }}
+            >
+              {countdown > 0
+                ? `Kirim ulang dalam ${countdown}s`
+                : "Kirim ulang tautan masuk"}
+            </Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-[var(--space-4)]">
@@ -85,11 +123,15 @@ export default function MasukPage() {
 
             <Button
               type="submit"
-              disabled={loading || !email}
+              disabled={loading || !email || countdown > 0}
               className="w-full"
               style={{ minHeight: "44px" }}
             >
-              {loading ? "Mengirim..." : "Kirim tautan masuk"}
+              {loading
+                ? "Mengirim..."
+                : countdown > 0
+                ? `Tunggu ${countdown}s`
+                : "Kirim tautan masuk"}
             </Button>
           </form>
         )}

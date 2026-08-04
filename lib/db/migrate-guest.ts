@@ -16,6 +16,9 @@ let isMigrating = false
 
 /**
  * Peta camelCase → snake_case untuk kolom businesses.
+ * CATATAN (MASALAH 1):
+ * businessToRow TIDAK BOLEH menghasilkan field plan!
+ * Nilai paket di server adalah sumber kebenaran (source of truth).
  */
 function businessToRow(biz: Record<string, unknown>, userId: string) {
   return {
@@ -35,7 +38,6 @@ function businessToRow(biz: Record<string, unknown>, userId: string) {
     qris_url: biz.qrisUrl ?? null,
     rekening: biz.rekening ?? null,
     ttd_url: biz.ttdUrl ?? null,
-    plan: "free",
   }
 }
 
@@ -55,7 +57,7 @@ function customerToRow(c: Record<string, unknown>) {
 }
 
 function documentToRow(d: LocalDocument) {
-  // MASALAH 5a: Status 'jatuh_tempo' tidak boleh ada di penyimpanan lokal/database.
+  // Status 'jatuh_tempo' tidak boleh ada di penyimpanan lokal/database.
   // Status tersebut hanya dihitung saat tampil di UI. Jika ditemukan di data lokal, melempar galat.
   if ((d.status as string) === "jatuh_tempo") {
     throw new Error(
@@ -79,7 +81,7 @@ function documentToRow(d: LocalDocument) {
     pajak_persen: d.pajakPersen,
     pajak_inklusif: d.pajakInklusif,
     ongkir: d.ongkir,
-    biaya_lain: d.biayaLain,
+    biayaLain: d.biayaLain,
     pembulatan_aktif: d.pembulatanAktif,
     subtotal: d.subtotal,
     diskon_nominal: d.diskonNominal,
@@ -126,21 +128,27 @@ function paymentToRow(p: LocalPayment) {
 /**
  * Unggah seluruh data tamu ke Supabase, lalu tandai business lokal milik userId.
  *
- * MENCEGAH DUA BARIS USAHA (MASALAH 1):
- * 1. Server tidak pernah membuat baris 'businesses' placeholder di auth/callback.
- * 2. Klien memeriksa apakah pengguna sudah memiliki bisnis di Supabase (`user_id = userId`).
- *    - Jika BELUM ada: bisnis lokal diunggah dengan ID lokal yang sama (1:1).
- *    - Jika SUDAH ada di server (misal login dari perangkat lain): bisnis lokal diselaraskan ke ID server.
- *    Indeks unik `businesses_user_unique` memastikan tidak ada dua baris bisnis untuk pengguna yang sama.
+ * PEMBARUAN MASALAH 1 (PLAN SYNC):
+ * - businessToRow tidak lagi menyertakan plan.
+ * - Bila server BELUM punya baris usaha, sertakan plan: "free" hanya pada penyisipan pertama.
+ * - Bila server SUDAH punya baris, jangan pernah mengirim plan. Nilai paket di server adalah sumber kebenaran.
+ * - Setelah upsert, salin plan dari server ke Dexie lokal (bukan hardcode "free").
  *
- * PENGELOLAAN CONCURRENCY (MASALAH 2):
- * Menggunakan variabel module-level `isMigrating` agar tidak bisa dijalankan dua kali secara bersamaan.
+ * PEMBARUAN MASALAH 2 (PENYELARASAN ID USAHA LOKAL & SERVER):
+ * - Bila targetBusinessId !== biz.id, selaraskan Dexie ke ID server dalam SATU transaksi:
+ *   tulis baris businesses baru ber-ID server, perbarui businessId pada seluruh documents, customers, products,
+ *   lalu hapus baris businesses lama. Tidak mengubah ID baris dokumen/item/pelanggan/produk.
  *
- * PEMBARUAN PAKET LOKAL (MASALAH 3):
- * Setelah migrasi berhasil, `db.businesses` di Dexie langsung diperbarui dengan `userId = userId`
- * dan `plan = "free"`, sehingga can() di UI mengenali pengguna sebagai akun gratis.
+ * PEMBARUAN MASALAH 3 (PENANDA MIGRASI):
+ * - Simpan penanda di meta "migratedForUser" = userId. Bila sudah pernah migrasi untuk user ini, lewati.
  */
 export async function migrateGuestToAccount(userId: string): Promise<void> {
+  // MASALAH 3: Periksa penanda migratedForUser di meta
+  const migratedEntry = await db.meta.get("migratedForUser")
+  if (migratedEntry && migratedEntry.value === userId) {
+    return
+  }
+
   if (isMigrating) {
     return
   }
@@ -178,14 +186,21 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
         targetBusinessId = biz.id
       }
 
-      // Upsert usaha ke Supabase
+      // MASALAH 1: Persiapkan payload bisnis tanpa menimpa plan jika server sudah punya
       const bizRow = businessToRow(
         { ...biz, id: targetBusinessId },
         userId,
       )
+
+      const bizPayload: Record<string, unknown> = { ...bizRow }
+      if (!existingServerBiz) {
+        // Hanya sertakan plan: "free" pada penyisipan pertama jika server belum punya usaha
+        bizPayload.plan = "free"
+      }
+
       const { error: bizError } = await supabase
         .from("businesses")
-        .upsert(bizRow, { onConflict: "id" })
+        .upsert(bizPayload, { onConflict: "id" })
 
       if (bizError) {
         throw new Error(`Gagal mengunggah profil usaha: ${bizError.message}`)
@@ -219,7 +234,6 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
         .toArray()
 
       if (documents.length > 0) {
-        // Cek duplikasi nomor lokal sebelum mengunggah (MASALAH 5b)
         const activeDocs = documents.filter((d) => !d.deletedAt)
         const docKeys = new Set<string>()
         for (const d of activeDocs) {
@@ -244,7 +258,6 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
             .upsert(chunk, { onConflict: "id" })
 
           if (error) {
-            // MASALAH 5b: Tangkap benturan indeks unik nomor dokumen
             if (error.code === "23505" || error.message.includes("documents_nomor_unique")) {
               throw new Error(
                 `Nomor dokumen sudah digunakan di server. Silakan periksa dan ubah nomor dokumen yang bentrok.`,
@@ -314,15 +327,64 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
         }
       }
 
-      // MASALAH 3: Di Dexie lokal, perbarui usaha menjadi userId ini dan plan = "free"
-      await db.businesses.update(biz.id, {
-        userId,
-        plan: "free",
-      })
+      // MASALAH 1: Ambil plan dari server sebagai sumber kebenaran
+      const { data: serverBizData } = await supabase
+        .from("businesses")
+        .select("plan")
+        .eq("id", targetBusinessId)
+        .single()
+
+      const serverPlan = (serverBizData?.plan as "guest" | "free" | "pro") || "free"
+
+      // MASALAH 2: Bila targetBusinessId !== biz.id, selaraskan Dexie ke ID server dalam SATU transaksi
+      if (targetBusinessId !== biz.id) {
+        await db.transaction(
+          "rw",
+          [db.businesses, db.documents, db.customers, db.products],
+          async () => {
+            const oldBiz = await db.businesses.get(biz.id)
+            if (oldBiz) {
+              // Tulis baris businesses baru ber-ID server dengan plan dari server
+              await db.businesses.put({
+                ...oldBiz,
+                id: targetBusinessId,
+                userId,
+                plan: serverPlan,
+              })
+
+              // Perbarui businessId pada seluruh baris documents
+              const docs = await db.documents.where("businessId").equals(biz.id).toArray()
+              for (const d of docs) {
+                await db.documents.update(d.id, { businessId: targetBusinessId })
+              }
+
+              // Perbarui businessId pada seluruh baris customers
+              const custs = await db.customers.where("businessId").equals(biz.id).toArray()
+              for (const c of custs) {
+                await db.customers.update(c.id, { businessId: targetBusinessId })
+              }
+
+              // Perbarui businessId pada seluruh baris products
+              const prods = await db.products.where("businessId").equals(biz.id).toArray()
+              for (const p of prods) {
+                await db.products.update(p.id, { businessId: targetBusinessId })
+              }
+
+              // Hapus baris businesses lama
+              await db.businesses.delete(biz.id)
+            }
+          },
+        )
+      } else {
+        // ID sudah sama, cukup perbarui userId dan plan dari server
+        await db.businesses.update(biz.id, {
+          userId,
+          plan: serverPlan,
+        })
+      }
     } else {
       // Jika tidak ada usaha lokal sama sekali (misal login di browser baru)
       if (existingServerBiz) {
-        // Tarik data usaha dari Supabase ke Dexie
         const { data: fullServerBiz } = await supabase
           .from("businesses")
           .select("*")
@@ -354,6 +416,9 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
         }
       }
     }
+
+    // MASALAH 3: Tandai bahwa migrasi telah berhasil dilakukan untuk user ini
+    await db.meta.put({ key: "migratedForUser", value: userId })
   } finally {
     isMigrating = false
   }

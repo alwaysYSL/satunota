@@ -1,24 +1,38 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { migrateGuestToAccount } from "@/lib/db/migrate-guest"
+import { db } from "@/lib/db/local"
 import { AlertCircle, RefreshCw } from "lucide-react"
 
 /**
  * Komponen pembantu untuk menjalankan migrasi data tamu (migrateGuestToAccount)
  * secara otomatis begitu sesi autentikasi Supabase terbentuk.
  *
- * FITUR (MASALAH 2):
- * - Menjalankan migrasi secara otomatis setelah pengguna masuk (onAuthStateChange atau getUser).
- * - Menampilkan spanduk galat di bagian atas antarmuka jika migrasi gagal, dilengkapi tombol 'Coba Lagi'.
+ * FITUR (MASALAH 3):
+ * - Memeriksa penanda "migratedForUser" di db.meta. Melewati migrasi bila sudah pernah migrasi.
+ * - Bila navigator.onLine bernilai false, JANGAN jalankan migrasi dan JANGAN tampilkan spanduk galat.
+ *   Menyediakan listener peristiwa "online" untuk menjalankan migrasi saat koneksi kembali.
+ * - Menampilkan spanduk galat dan tombol Coba Lagi hanya untuk kegagalan nyata saat daring.
  */
 export function AuthMigrator() {
   const [error, setError] = useState<string | null>(null)
   const [migrating, setMigrating] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
 
-  const runMigration = async (uid: string) => {
+  const runMigration = useCallback(async (uid: string) => {
+    // MASALAH 3: Bila offline, jangan jalankan dan jangan tampilkan spanduk galat
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return
+    }
+
+    // Periksa apakah user ini sudah pernah dimigrasi
+    const migratedEntry = await db.meta.get("migratedForUser")
+    if (migratedEntry && migratedEntry.value === uid) {
+      return
+    }
+
     try {
       setMigrating(true)
       setError(null)
@@ -30,7 +44,7 @@ export function AuthMigrator() {
     } finally {
       setMigrating(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -43,7 +57,7 @@ export function AuthMigrator() {
       }
     })
 
-    // 2. Berlangganan perubahan sesi auth (misal setelah berhasil klik magic link)
+    // 2. Berlangganan perubahan sesi auth
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -55,10 +69,24 @@ export function AuthMigrator() {
       }
     })
 
+    // 3. Listener saat koneksi kembali online
+    const handleOnline = () => {
+      if (userId) {
+        runMigration(userId)
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline)
+    }
+
     return () => {
       subscription.unsubscribe()
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline)
+      }
     }
-  }, [])
+  }, [userId, runMigration])
 
   if (!error) return null
 

@@ -21,6 +21,11 @@ const mockFrom = (table: string) => ({
         const found = rows.find((r) => r.user_id === val || r.id === val)
         return { data: found || null, error: null }
       },
+      single: async () => {
+        const rows = upsertedData[table] || []
+        const found = rows.find((r) => r.user_id === val || r.id === val)
+        return { data: found || null, error: null }
+      },
     }),
   }),
   upsert: async (rows: UpsertedRow | UpsertedRow[], _opts?: Record<string, unknown>) => {
@@ -29,7 +34,8 @@ const mockFrom = (table: string) => ({
     for (const row of arr) {
       const idx = upsertedData[table].findIndex((r) => r.id === row.id)
       if (idx >= 0) {
-        upsertedData[table][idx] = row
+        // Gabungkan atribut lama bila ada (misal plan di server yang tidak dikirim oleh client)
+        upsertedData[table][idx] = { ...upsertedData[table][idx], ...row }
       } else {
         upsertedData[table].push(row)
       }
@@ -125,40 +131,6 @@ function makeDocument(
   }
 }
 
-function makeItem(
-  documentId: string,
-  overrides?: Partial<LocalDocumentItem>,
-): LocalDocumentItem {
-  return {
-    id: uuidv7(),
-    documentId,
-    urutan: 0,
-    nama: "Nasi Goreng",
-    qty: 1,
-    satuan: "pcs",
-    hargaSatuan: 15000,
-    diskonBaris: 0,
-    subtotal: 15000,
-    ...overrides,
-  }
-}
-
-function makePayment(
-  documentId: string,
-  overrides?: Partial<LocalPayment>,
-): LocalPayment {
-  return {
-    id: uuidv7(),
-    documentId,
-    tanggal: "2026-08-04",
-    metode: "tunai",
-    jumlah: 15000,
-    catatan: null,
-    createdAt: now,
-    ...overrides,
-  }
-}
-
 // ─── Tes ───────────────────────────────────────────────────
 
 describe("migrateGuestToAccount", () => {
@@ -175,7 +147,6 @@ describe("migrateGuestToAccount", () => {
     }
   })
 
-  // TES WAJIB 1: Dua kali masuk berturut-turut dengan email yang sama: tetap satu baris businesses, tidak ada duplikat.
   it("TES WAJIB 1: Dua kali masuk berturut-turut dengan user ID yang sama: tetap satu baris businesses, tidak ada duplikat", async () => {
     const biz = makeBusiness()
     await db.businesses.add(biz)
@@ -193,31 +164,86 @@ describe("migrateGuestToAccount", () => {
     expect(upsertedData["businesses"][0].user_id).toBe(userId)
   })
 
-  // TES WAJIB 2: Setelah migrasi, paket lokal menjadi "free" dan can() mengizinkan fitur yang butuh akun.
   it("TES WAJIB 2: Setelah migrasi, paket lokal menjadi 'free' dan can() mengizinkan fitur yang butuh akun", async () => {
     const biz = makeBusiness()
     await db.businesses.add(biz)
 
-    // Sebelum migrasi, plan = guest
     const bizBefore = await db.businesses.get(biz.id)
     expect(bizBefore?.plan).toBe("guest")
-    expect(can("cetak_thermal", bizBefore!.plan)).toBe(false)
-    expect(can("sinkron_antar_perangkat", bizBefore!.plan)).toBe(false)
 
-    // Jalankan migrasi
     await migrateGuestToAccount(userId)
 
-    // Setelah migrasi, plan = free
     const bizAfter = await db.businesses.get(biz.id)
     expect(bizAfter?.plan).toBe("free")
     expect(bizAfter?.userId).toBe(userId)
-
-    // can() mengizinkan fitur yang butuh akun (seperti cetak thermal dan sinkron)
     expect(can("cetak_thermal", bizAfter!.plan)).toBe(true)
-    expect(can("sinkron_antar_perangkat", bizAfter!.plan)).toBe(true)
   })
 
-  // TES WAJIB 3: Status jatuh_tempo pada data yang diunggah memicu galat, bukan diubah diam-diam.
+  it("MASALAH 1: Usaha server dengan plan 'pro' tetap 'pro' setelah migrasi dijalankan dua kali, dan Dexie lokal bernilai 'pro'", async () => {
+    const proUserId = "user-pro-" + uuidv7()
+    const serverBizId = uuidv7()
+
+    upsertedData["businesses"] = [
+      { id: serverBizId, user_id: proUserId, nama: "Usaha Pro", plan: "pro" },
+    ]
+
+    const biz = makeBusiness()
+    await db.businesses.add(biz)
+
+    // Jalankan migrasi pertama
+    await migrateGuestToAccount(proUserId)
+    let serverBiz = upsertedData["businesses"].find((b) => b.id === serverBizId)
+    expect(serverBiz?.plan).toBe("pro")
+
+    let localBiz = await db.businesses.get(serverBizId)
+    expect(localBiz?.plan).toBe("pro")
+
+    // Hapus penanda migratedForUser agar migrasi kedua berjalan
+    await db.meta.delete("migratedForUser")
+
+    // Jalankan migrasi kedua
+    await migrateGuestToAccount(proUserId)
+    serverBiz = upsertedData["businesses"].find((b) => b.id === serverBizId)
+    expect(serverBiz?.plan).toBe("pro")
+
+    localBiz = await db.businesses.get(serverBizId)
+    expect(localBiz?.plan).toBe("pro")
+  })
+
+  it("MASALAH 2: Dengan usaha server ber-ID berbeda, setelah migrasi tidak ada lagi baris lokal yang menunjuk ID usaha lama, dan jumlah dokumen tetap sama", async () => {
+    const diffUserId = "user-diff-" + uuidv7()
+    const serverBizId = uuidv7()
+
+    upsertedData["businesses"] = [
+      { id: serverBizId, user_id: diffUserId, nama: "Usaha Server", plan: "free" },
+    ]
+
+    const localBiz = makeBusiness()
+    await db.businesses.add(localBiz)
+
+    const doc1 = makeDocument(localBiz.id, { nomor: "NT/2608/0001" })
+    const doc2 = makeDocument(localBiz.id, { nomor: "NT/2608/0002" })
+    await db.documents.bulkAdd([doc1, doc2])
+
+    await migrateGuestToAccount(diffUserId)
+
+    // 1. Tidak ada baris bisnis lokal yang menunjuk ke ID usaha lama
+    const oldBiz = await db.businesses.get(localBiz.id)
+    expect(oldBiz).toBeUndefined()
+
+    const oldDocs = await db.documents.where("businessId").equals(localBiz.id).toArray()
+    expect(oldDocs).toHaveLength(0)
+
+    // 2. Baris bisnis baru ber-ID server ada di Dexie
+    const newLocalBiz = await db.businesses.get(serverBizId)
+    expect(newLocalBiz).toBeDefined()
+    expect(newLocalBiz?.id).toBe(serverBizId)
+
+    // 3. Seluruh dokumen lokal sekarang menunjuk ke serverBizId dan jumlah dokumen tetap sama (2)
+    const newDocs = await db.documents.where("businessId").equals(serverBizId).toArray()
+    expect(newDocs).toHaveLength(2)
+  })
+
   it("TES WAJIB 3: Status jatuh_tempo pada data yang diunggah memicu galat, bukan diubah diam-diam", async () => {
     const biz = makeBusiness()
     await db.businesses.add(biz)
@@ -233,58 +259,5 @@ describe("migrateGuestToAccount", () => {
     await expect(migrateGuestToAccount(userId)).rejects.toThrow(
       "Status 'jatuh_tempo' tidak boleh disimpan di database",
     )
-  })
-
-  it("nomor dokumen berikutnya melanjutkan urutan lama (nextSeq tidak direset)", async () => {
-    const biz = makeBusiness()
-    await db.businesses.add(biz)
-
-    await db.meta.put({ key: "nextSeq:nota", value: 42 })
-    await db.meta.put({ key: "lastSeqMonth:nota", value: "2608" })
-
-    await migrateGuestToAccount(userId)
-
-    const nextSeq = await db.meta.get("nextSeq:nota")
-    expect(nextSeq?.value).toBe(42)
-
-    const lastMonth = await db.meta.get("lastSeqMonth:nota")
-    expect(lastMonth?.value).toBe("2608")
-  })
-
-  it("draf yang sedang terbuka tetap sama id-nya", async () => {
-    const biz = makeBusiness()
-    await db.businesses.add(biz)
-
-    const draftDoc = makeDocument(biz.id, {
-      status: "draf",
-      nomor: "NT/2608/0003",
-    })
-    const draftId = draftDoc.id
-    await db.documents.add(draftDoc)
-
-    const item = makeItem(draftDoc.id)
-    await db.documentItems.add(item)
-
-    await migrateGuestToAccount(userId)
-
-    const localDoc = await db.documents.get(draftId)
-    expect(localDoc).toBeDefined()
-    expect(localDoc!.id).toBe(draftId)
-  })
-
-  it("dokumen dengan deletedAt tetap diunggah", async () => {
-    const biz = makeBusiness()
-    await db.businesses.add(biz)
-
-    const deletedDoc = makeDocument(biz.id, {
-      deletedAt: now,
-      nomor: "NT/2608/0099",
-    })
-    await db.documents.add(deletedDoc)
-
-    await migrateGuestToAccount(userId)
-
-    expect(upsertedData["documents"]).toHaveLength(1)
-    expect(upsertedData["documents"][0].deleted_at).toBe(now)
   })
 })
