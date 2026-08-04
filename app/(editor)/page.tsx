@@ -8,8 +8,12 @@ import { CalcSummary } from "@/components/editor/calc-summary"
 import { ActionBar } from "@/components/editor/action-bar"
 import { PreviewDrawer } from "@/components/editor/preview-drawer"
 import { useEditorStore } from "@/lib/stores/editor-store"
+import { useAutoSave } from "@/lib/hooks/use-auto-save"
 
 export default function EditorPage() {
+  // ─── Auto-save ke IndexedDB dengan debounce 500ms ─────
+  useAutoSave()
+
   const businessNama = useEditorStore((s) => s.businessNama)
   const businessAlamat = useEditorStore((s) => s.businessAlamat)
   const businessTelepon = useEditorStore((s) => s.businessTelepon)
@@ -20,6 +24,7 @@ export default function EditorPage() {
   const diterimaDari = useEditorStore((s) => s.diterimaDari)
   const dibayar = useEditorStore((s) => s.dibayar)
   const setField = useEditorStore((s) => s.setField)
+  const setNomor = useEditorStore((s) => s.setNomor)
 
   return (
     <>
@@ -77,7 +82,7 @@ export default function EditorPage() {
             </label>
             <NotionInput
               value={nomor}
-              onChange={(v) => setField("nomor", v)}
+              onChange={(v) => setNomor(v, true)}
               placeholder="Otomatis"
               className="text-fg"
             />

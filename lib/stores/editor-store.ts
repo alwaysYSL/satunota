@@ -2,8 +2,10 @@
 
 import { useMemo } from "react"
 import { create } from "zustand"
+import { v7 as uuidv7 } from "uuid"
 import { calc, type CalcInput, type CalcResult } from "@/lib/calc"
 import { documentSchema, documentItemSchema } from "@/lib/schema/document"
+import type { LocalDocument, LocalDocumentItem } from "@/lib/db/local"
 
 // ─── Types ──────────────────────────────────────────────
 
@@ -37,8 +39,11 @@ export type EditorState = {
   businessTelepon: string
 
   // Identitas dokumen
+  documentId: string | null
   tipe: DocType
   nomor: string
+  nomorManual: boolean
+  allocatedNomor: Partial<Record<DocType, string>>
   tanggal: string // ISO date string YYYY-MM-DD
   dueDate: string | null
   customerNama: string
@@ -67,6 +72,9 @@ export type EditorState = {
 
   // Tampilkan preview
   showPreview: boolean
+
+  // Flag status hidrasi dari Dexie
+  hydrated: boolean
 }
 
 // ─── Actions ────────────────────────────────────────────
@@ -74,22 +82,23 @@ export type EditorState = {
 export type EditorActions = {
   setTipe: (tipe: DocType) => void
   setField: <K extends keyof EditorState>(key: K, value: EditorState[K]) => void
+  setNomor: (nomor: string, manual: boolean) => void
+  setAllocatedNomor: (tipe: DocType, nomor: string) => void
+  setDocumentId: (id: string) => void
   addItem: () => void
   updateItem: (id: string, partial: Partial<EditorItem>) => void
   removeItem: (id: string) => void
   toggleChip: (chip: keyof ChipVisibility) => void
   resetDocument: () => void
   setShowPreview: (show: boolean) => void
+  setHydrated: (hydrated: boolean) => void
+  loadDocument: (doc: LocalDocument, items: LocalDocumentItem[]) => void
   validateDocument: () => boolean
 }
 
 // ─── Helpers ────────────────────────────────────────────
 
-let itemCounter = 0
-function newItemId(): string {
-  itemCounter++
-  return `item-${Date.now()}-${itemCounter}`
-}
+// Item ID generator — UUID v7 sesuai SCHEMA.md §3
 
 function todayISO(): string {
   const d = new Date()
@@ -101,7 +110,7 @@ function todayISO(): string {
 
 function createEmptyItem(): EditorItem {
   return {
-    id: newItemId(),
+    id: uuidv7(),
     nama: "",
     qty: 1,
     satuan: "pcs",
@@ -115,8 +124,11 @@ function initialState(): EditorState {
     businessNama: "",
     businessAlamat: "",
     businessTelepon: "",
+    documentId: null,
     tipe: "nota",
     nomor: "",
+    nomorManual: false,
+    allocatedNomor: {},
     tanggal: todayISO(),
     dueDate: null,
     customerNama: "",
@@ -142,6 +154,7 @@ function initialState(): EditorState {
       showJatuhTempo: false,
     },
     showPreview: false,
+    hydrated: false,
   }
 }
 
@@ -153,6 +166,15 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
   setTipe: (tipe) =>
     set((s) => {
       const updates: Partial<EditorState> = { tipe }
+
+      // Reuse previously allocated number for this doc type on active draft if available
+      if (s.allocatedNomor[tipe]) {
+        updates.nomor = s.allocatedNomor[tipe]
+        updates.nomorManual = false
+      } else {
+        updates.nomor = ""
+        updates.nomorManual = false
+      }
 
       // Reset field-field yang tidak berlaku untuk jenis baru (SRS §5.6)
       if (tipe !== "invoice") {
@@ -172,6 +194,15 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     }),
 
   setField: (key, value) => set({ [key]: value }),
+
+  setNomor: (nomor, manual) => set({ nomor, nomorManual: manual }),
+
+  setAllocatedNomor: (tipe, nomor) =>
+    set((s) => ({
+      allocatedNomor: { ...s.allocatedNomor, [tipe]: nomor },
+    })),
+
+  setDocumentId: (id) => set({ documentId: id }),
 
   addItem: () =>
     set((s) => ({
@@ -208,9 +239,57 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       chips: { ...s.chips, [chip]: !s.chips[chip] },
     })),
 
-  resetDocument: () => set(initialState()),
+  resetDocument: () => set({ ...initialState(), hydrated: true }),
 
   setShowPreview: (show) => set({ showPreview: show }),
+
+  setHydrated: (hydrated) => set({ hydrated }),
+
+  loadDocument: (doc, items) =>
+    set((s) => ({
+      documentId: doc.id,
+      tipe: doc.tipe,
+      nomor: doc.nomor,
+      nomorManual: false,
+      allocatedNomor: {
+        ...s.allocatedNomor,
+        [doc.tipe]: doc.nomor,
+      },
+      tanggal: doc.tanggal,
+      dueDate: doc.dueDate,
+      customerNama: doc.customerNama ?? "",
+      diterimaDari: doc.diterimaDari ?? "",
+      catatan: doc.catatan ?? "",
+      syarat: doc.syarat ?? "",
+      items:
+        items.length > 0
+          ? items.map((it) => ({
+              id: it.id,
+              nama: it.nama,
+              qty: it.qty,
+              satuan: it.satuan,
+              hargaSatuan: it.hargaSatuan,
+              diskonBaris: it.diskonBaris,
+            }))
+          : [createEmptyItem()],
+      diskonTipe: doc.diskonTipe,
+      diskonNilai: doc.diskonNilai,
+      pajakPersen: doc.pajakPersen,
+      pajakInklusif: doc.pajakInklusif,
+      ongkir: doc.ongkir,
+      biayaLain: doc.biayaLain,
+      pembulatanAktif: doc.pembulatanAktif,
+      dibayar: doc.dibayar,
+      chips: {
+        showDiskon: doc.diskonNilai > 0,
+        showPajak: doc.pajakPersen > 0,
+        showOngkir: doc.ongkir > 0,
+        showBiayaLain: doc.biayaLain > 0,
+        showCatatan: Boolean(doc.catatan),
+        showJatuhTempo: Boolean(doc.dueDate),
+      },
+      hydrated: true,
+    })),
 
   validateDocument: () => {
     const s = get()
@@ -222,12 +301,11 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     )
 
     // Validasi setiap item aktif memakai documentItemSchema
-    const validUuid = "00000000-0000-0000-0000-000000000000"
     for (const item of s.items) {
       // Jika item punya harga > 0 tetapi namanya kosong, atau nama diisi tetapi invalid
       if (item.hargaSatuan > 0 || item.nama.trim() !== "") {
         const itemParse = documentItemSchema.safeParse({
-          id: validUuid,
+          id: item.id,
           urutan: 0,
           nama: item.nama.trim(),
           qty: item.qty > 0 ? item.qty : 1,
@@ -252,9 +330,10 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
     }
 
     // 2. Validasi dokumen lengkap dengan documentSchema
+    const placeholderUuid = "00000000-0000-0000-0000-000000000000"
     const docPayload = {
-      id: validUuid,
-      businessId: validUuid,
+      id: s.documentId ?? placeholderUuid,
+      businessId: placeholderUuid,
       tipe: s.tipe,
       nomor: s.nomor || "NT-001",
       tanggal: s.tanggal,
@@ -274,7 +353,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       syarat: s.syarat || null,
       sourceDocumentId: null,
       items: activeItems.map((item, idx) => ({
-        id: validUuid,
+        id: item.id,
         urutan: idx,
         nama: item.nama.trim(),
         qty: item.qty > 0 ? item.qty : 1,
