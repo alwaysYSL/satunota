@@ -117,7 +117,3 @@ export async function reserveDocNomor(
   })
 }
 
-/**
- * Deprecated alias untuk reserveDocNomor (dijaga agar kompatibel).
- */
-export const generateDocNomor = reserveDocNomor

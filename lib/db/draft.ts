@@ -10,14 +10,9 @@ import { peekDocNomor } from "./doc-numbering"
 /**
  * Panggil saat aplikasi / editor dibuka untuk memuat draf aktif dari Dexie.
  *
- * - Jika meta."activeDraftId" ada dan dokumen ditemukan di db.documents:
- *   muat dokumen beserta itemnya ke Zustand store dan tandai hydrated = true.
- * - Jika draf belum tersimpan di db.documents atau meta."activeDraftId" belum ada:
- *   gunakan activeDraftId tersebut (atau buat UUID v7 baru) sebagai documentId,
- *   simpan ke meta."activeDraftId", dan tandai hydrated = true.
- *   Nomor ditampilkan menggunakan peekDocNomor (tanpa menaikkan nextSeq).
- *
- * PENTING: Simpan otomatis WAJIB berhenti total sampai hidrasi selesai.
+ * ATURAN 3:
+ * `hydrateDraft` HARUS memuat peta `draftNomor:<draftId>` ke `allocatedNomor` di store
+ * untuk ketiga jenis dokumen sekaligus — bukan hanya jenis dokumen yang tersimpan.
  */
 export async function hydrateDraft(): Promise<string> {
   const store = useEditorStore.getState()
@@ -42,6 +37,22 @@ export async function hydrateDraft(): Promise<string> {
   const activeDraftId =
     typeof activeDraftEntry?.value === "string" ? activeDraftEntry.value : null
 
+  const targetDraftId = activeDraftId || uuidv7()
+  if (!activeDraftEntry) {
+    await db.meta.put({ key: "activeDraftId", value: targetDraftId })
+  }
+
+  // ATURAN 3: Muat peta draftNomor:<draftId> dari meta ke allocatedNomor di store untuk ketiga jenis sekaligus
+  const draftNomorEntry = await db.meta.get(`draftNomor:${targetDraftId}`)
+  let draftNomorMap: Partial<Record<"nota" | "invoice" | "kwitansi", string>> = {}
+  if (draftNomorEntry && typeof draftNomorEntry.value === "string") {
+    try {
+      draftNomorMap = JSON.parse(draftNomorEntry.value)
+    } catch {
+      draftNomorMap = {}
+    }
+  }
+
   if (activeDraftId) {
     const doc = await db.documents.get(activeDraftId)
     if (doc && !doc.deletedAt) {
@@ -51,39 +62,55 @@ export async function hydrateDraft(): Promise<string> {
         .sortBy("urutan")
 
       store.loadDocument(doc, items)
+
+      // Gabungkan draftNomorMap dengan allocatedNomor di store
+      useEditorStore.setState((s) => ({
+        allocatedNomor: {
+          ...draftNomorMap,
+          ...s.allocatedNomor,
+          [doc.tipe]: doc.nomor,
+        },
+      }))
       return activeDraftId
     }
   }
 
-  // Jika draf belum ada di Dexie atau belum pernah disimpan
-  const draftId = activeDraftId || uuidv7()
-  if (!activeDraftEntry) {
-    await db.meta.put({ key: "activeDraftId", value: draftId })
+  // Jika draf belum pernah disimpan di db.documents
+  const currentTipe = store.tipe
+  let initialNomor = draftNomorMap[currentTipe]
+
+  if (!initialNomor) {
+    // ATURAN 4: Untuk jenis yang belum pernah punya nomor, nomor yang tampil WAJIB dari peekDocNomor
+    initialNomor = await peekDocNomor(businessId, currentTipe)
   }
 
-  const peekedNomor = await peekDocNomor(businessId, store.tipe)
-
   useEditorStore.setState({
-    documentId: draftId,
-    nomor: store.nomor || peekedNomor,
+    documentId: targetDraftId,
+    nomor: store.nomor || initialNomor,
+    allocatedNomor: draftNomorMap,
     hydrated: true,
   })
-  return draftId
+
+  return targetDraftId
 }
 
 /**
  * Buat draf dokumen baru dengan UUID v7 baru.
- * Memperbarui meta."activeDraftId" ke ID baru ini dan mereset Zustand store.
- * Ini memastikan dokumen baru tidak menimpa dokumen sebelumnya di riwayat.
+ * ATURAN 6: Draf baru mulai dengan peta kosong (allocatedNomor = {}).
  */
 export async function createNewDocumentDraft(): Promise<string> {
   const newDraftId = uuidv7()
   await db.meta.put({ key: "activeDraftId", value: newDraftId })
   const store = useEditorStore.getState()
-  store.resetDocument()
+  store.resetDocument() // resetDocument mereset allocatedNomor ke {}
   const businessId = await ensureGuestBusiness()
   const peekedNomor = await peekDocNomor(businessId, "nota")
-  useEditorStore.setState({ documentId: newDraftId, nomor: peekedNomor, hydrated: true })
+  useEditorStore.setState({
+    documentId: newDraftId,
+    nomor: peekedNomor,
+    allocatedNomor: {},
+    hydrated: true,
+  })
   return newDraftId
 }
 
@@ -98,6 +125,25 @@ export async function openDocumentDraft(docId: string): Promise<void> {
       .where("documentId")
       .equals(docId)
       .sortBy("urutan")
+
+    const draftNomorEntry = await db.meta.get(`draftNomor:${docId}`)
+    let draftNomorMap: Partial<Record<"nota" | "invoice" | "kwitansi", string>> = {}
+    if (draftNomorEntry && typeof draftNomorEntry.value === "string") {
+      try {
+        draftNomorMap = JSON.parse(draftNomorEntry.value)
+      } catch {
+        draftNomorMap = {}
+      }
+    }
+
     useEditorStore.getState().loadDocument(doc, items)
+
+    useEditorStore.setState((s) => ({
+      allocatedNomor: {
+        ...draftNomorMap,
+        ...s.allocatedNomor,
+        [doc.tipe]: doc.nomor,
+      },
+    }))
   }
 }

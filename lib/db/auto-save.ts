@@ -110,7 +110,18 @@ export async function saveDocument(
         })
       }
 
-      // 2. Tentukan nomor dokumen
+      // 2. Tentukan nomor dokumen (ATURAN 1, 2, 5)
+      const draftNomorKey = `draftNomor:${docId}`
+      const draftNomorEntry = await db.meta.get(draftNomorKey)
+      let draftMap: Partial<Record<"nota" | "invoice" | "kwitansi", string>> = {}
+      if (draftNomorEntry && typeof draftNomorEntry.value === "string") {
+        try {
+          draftMap = JSON.parse(draftNomorEntry.value)
+        } catch {
+          draftMap = {}
+        }
+      }
+
       if (!existingDoc) {
         // DOKUMEN BARU PERTAMA KALI DISIMPAN KE DATABASE
         isNewDoc = true
@@ -118,10 +129,19 @@ export async function saveDocument(
         if (state.nomorManual && state.nomor.trim() !== "") {
           // Nomor diisi manual oleh pengguna — tidak menaikkan nextSeq
           finalNomor = state.nomor
+        } else if (draftMap[state.tipe]) {
+          // ATURAN 2: Jika jenis ini sudah punya nomor di draftNomorMap, PAKAI nomor itu
+          finalNomor = draftMap[state.tipe]!
+        } else if (state.allocatedNomor[state.tipe]) {
+          finalNomor = state.allocatedNomor[state.tipe]!
+          draftMap[state.tipe] = finalNomor
+          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
         } else {
           // Memesan nomor resmi (reserve) TEPAT SATU KALI di dalam transaksi Dexie yang sama
           finalNomor = await reserveDocNomor(businessId, state.tipe)
           newlyAllocatedTipe = state.tipe
+          draftMap[state.tipe] = finalNomor
+          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
         }
 
         // Perbarui meta."docCount" untuk dokumen baru (SCHEMA.md §6.1)
@@ -130,15 +150,28 @@ export async function saveDocument(
           typeof docCountEntry?.value === "number" ? docCountEntry.value : 0
         await db.meta.put({ key: "docCount", value: currentCount + 1 })
       } else {
-        // DOKUMEN SUDAH ADA DI DATABASE — gunakan nomor yang tersimpan
+        // DOKUMEN SUDAH ADA DI DATABASE
         if (state.nomorManual && state.nomor.trim() !== "") {
           finalNomor = state.nomor
         } else if (existingDoc.tipe === state.tipe && existingDoc.nomor) {
           finalNomor = existingDoc.nomor
+          if (!draftMap[state.tipe]) {
+            draftMap[state.tipe] = finalNomor
+            await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
+          }
+        } else if (draftMap[state.tipe]) {
+          // ATURAN 2: Jika draf ini sudah punya nomor untuk jenis ini di meta, PAKAI nomor itu
+          finalNomor = draftMap[state.tipe]!
+        } else if (state.allocatedNomor[state.tipe]) {
+          finalNomor = state.allocatedNomor[state.tipe]!
+          draftMap[state.tipe] = finalNomor
+          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
         } else {
-          // Tipe dokumen berubah pada dokumen tersimpan
+          // Memesan nomor untuk jenis baru pada draf tersimpan
           finalNomor = await reserveDocNomor(businessId, state.tipe)
           newlyAllocatedTipe = state.tipe
+          draftMap[state.tipe] = finalNomor
+          await db.meta.put({ key: draftNomorKey, value: JSON.stringify(draftMap) })
         }
       }
 

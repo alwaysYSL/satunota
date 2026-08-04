@@ -20,7 +20,15 @@ export function DocTypeSelector() {
   const handleSelectTipe = async (newTipe: DocType) => {
     setTipe(newTipe)
     const state = useEditorStore.getState()
-    if (!state.nomorManual && !state.allocatedNomor[newTipe]) {
+
+    // ATURAN 4: Untuk jenis yang belum pernah punya nomor pada draf ini,
+    // nomor yang ditampilkan di editor WAJIB berasal dari peekDocNomor.
+    // setTipe tidak boleh membiarkan kolom nomor kosong.
+    if (!state.nomorManual) {
+      if (state.allocatedNomor[newTipe]) {
+        useEditorStore.setState({ nomor: state.allocatedNomor[newTipe] })
+        return
+      }
       if (documentId) {
         const existing = await db.documents.get(documentId)
         if (existing && existing.tipe === newTipe && existing.nomor) {

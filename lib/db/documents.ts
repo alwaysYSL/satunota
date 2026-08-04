@@ -4,7 +4,7 @@
 import { v7 as uuidv7 } from "uuid"
 import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
-import { generateDocNomor } from "./doc-numbering"
+import { reserveDocNomor } from "./doc-numbering"
 import { createNewDocumentDraft, openDocumentDraft } from "./draft"
 import { cancelPendingAutoSave } from "./save-queue"
 import { useEditorStore } from "@/lib/stores/editor-store"
@@ -168,7 +168,7 @@ export async function duplicateDocument(
     "rw",
     [db.businesses, db.documents, db.documentItems, db.meta],
     async () => {
-      newNomor = await generateDocNomor(businessId, sourceDoc.tipe)
+      newNomor = await reserveDocNomor(businessId, sourceDoc.tipe)
 
       const docCountEntry = await db.meta.get("docCount")
       const currentCount =
@@ -250,7 +250,7 @@ export async function convertInvoiceToKwitansi(
     "rw",
     [db.businesses, db.documents, db.documentItems, db.meta],
     async () => {
-      kwitansiNomor = await generateDocNomor(businessId, "kwitansi")
+      kwitansiNomor = await reserveDocNomor(businessId, "kwitansi")
 
       const docCountEntry = await db.meta.get("docCount")
       const currentCount =
