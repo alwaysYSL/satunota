@@ -8,6 +8,7 @@ import {
   Page,
   View,
   Text,
+  Image,
   StyleSheet,
 } from "@react-pdf/renderer"
 import { formatRupiah, formatTanggal, terbilang } from "@/lib/format"
@@ -231,6 +232,9 @@ export function PdfDocument({
       <Page size={size} style={pageStyle}>
         {/* ── Header Dokumen ── */}
         <View style={s.header}>
+          {data.logoUrl ? (
+            <Image src={data.logoUrl} style={{ width: 80, height: 40, objectFit: "contain", alignSelf: "center", marginBottom: 4 }} />
+          ) : null}
           <Text style={s.headerTitle}>{judul}</Text>
           {data.nomor ? (
             <Text style={s.headerNomor}>No: {data.nomor}</Text>

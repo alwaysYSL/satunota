@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { migrateGuestToAccount, isUserMigrated } from "@/lib/db/migrate-guest"
-import { db } from "@/lib/db/local"
 import { updateLastUserId } from "@/lib/db/owner"
 import { AlertCircle, RefreshCw } from "lucide-react"
 

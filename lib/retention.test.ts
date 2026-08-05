@@ -82,12 +82,28 @@ describe("Retention & Weekly Backup (SRS 4.5)", () => {
       ),
     ).toBe(0)
 
-    // 90 hari tidak dibuka -> Tahap 3
+    // 8 hari -> Tahap 1
+    expect(
+      tahapRetensi(
+        { guestStartedAt: "2026-07-28T12:00:00.000Z", docCount: 0 },
+        now,
+      ),
+    ).toBe(1)
+
+    // 31 hari -> Tahap 2
+    expect(
+      tahapRetensi(
+        { guestStartedAt: "2026-07-05T12:00:00.000Z", docCount: 0 },
+        now,
+      ),
+    ).toBe(2)
+
+    // 91 hari tidak dibuka -> Tahap 3
     expect(
       tahapRetensi(
         {
           guestStartedAt: "2026-08-04T12:00:00.000Z",
-          lastOpenedAt: "2026-05-07T12:00:00.000Z",
+          lastOpenedAt: "2026-05-06T12:00:00.000Z",
           docCount: 0,
         },
         now,

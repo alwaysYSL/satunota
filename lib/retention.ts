@@ -49,10 +49,51 @@ export function tahapRetensi(input: RetentionInput, nowIso: string): RetentionSt
 }
 
 /**
+ * Memastikan guestStartedAt dan docCount terisi pada meta untuk tamu lama (TUGAS 3).
+ */
+export async function ensureGuestRetentionMeta(): Promise<void> {
+  const guestEntry = await db.meta.get("guestId")
+  if (!guestEntry || typeof guestEntry.value !== "string") return
+
+  const guestOwnerId = guestEntry.value
+
+  // 1. Backfill guestStartedAt jika belum ada
+  const startedEntry = await db.meta.get("guestStartedAt")
+  if (!startedEntry || !startedEntry.value) {
+    const guestDocs = await db.documents
+      .where("ownerId")
+      .equals(guestOwnerId)
+      .sortBy("createdAt")
+
+    const nonDeleted = guestDocs.filter((d) => !d.deletedAt)
+    let oldestDate: string
+    if (nonDeleted.length > 0 && nonDeleted[0]?.createdAt) {
+      oldestDate = nonDeleted[0].createdAt
+    } else {
+      oldestDate = new Date().toISOString()
+    }
+    await db.meta.put({ key: "guestStartedAt", value: oldestDate })
+  }
+
+  // 2. Backfill docCount jika belum ada
+  const docCountEntry = await db.meta.get("docCount")
+  if (!docCountEntry || typeof docCountEntry.value !== "number") {
+    const allGuestDocs = await db.documents
+      .where("ownerId")
+      .equals(guestOwnerId)
+      .toArray()
+    const count = allGuestDocs.filter((d) => !d.deletedAt).length
+
+    await db.meta.put({ key: "docCount", value: count })
+  }
+}
+
+/**
  * Menjalankan cadangan otomatis mingguan di latar (SRS §4.5 & TUGAS 3).
  * Bila now - meta.lastBackupAt >= 7 hari, siapkan file cadangan dan simpan di IndexedDB meta.
  */
 export async function ensureWeeklyBackup(nowIsoStr?: string): Promise<boolean> {
+  await ensureGuestRetentionMeta()
   const now = nowIsoStr || new Date().toISOString()
   const lastBackupEntry = await db.meta.get("lastBackupAt")
   const lastBackupAt = lastBackupEntry?.value as string | undefined

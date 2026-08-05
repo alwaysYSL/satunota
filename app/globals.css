@@ -146,8 +146,10 @@
     @apply border-border outline-ring/50;
   }
 
-  html {
+  html,
+  body {
     @apply font-sans;
+    overflow-x: hidden;
   }
 
   body {

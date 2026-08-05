@@ -38,7 +38,7 @@ export default function EditorPage() {
 
   return (
     <>
-      <main className="mx-auto w-full max-w-[720px] pb-24 px-4">
+      <main className="mx-auto w-full max-w-[720px] pb-[calc(6rem+env(safe-area-inset-bottom,0px))] px-4">
         {/* Banner Error Hidrasi (TAMBAHAN 4) */}
         {hydrationError && (
           <div className="my-3 p-3 bg-danger-bg text-danger text-[13px] rounded-md border border-danger/30 font-medium">
@@ -46,40 +46,43 @@ export default function EditorPage() {
           </div>
         )}
         {/* ─── Top Bar Navigasi ────────────────────────── */}
-        <div className="flex items-center justify-between py-2 border-b border-line">
-          <span className="text-[13px] font-bold text-fg tracking-wide">
+        <div className="flex items-center justify-between py-2 border-b border-line min-w-0">
+          <span className="text-[13px] font-bold text-fg tracking-wide shrink-0">
             SATUNOTA
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={handleCreateNew}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+              aria-label="Buat Baru"
+              className="flex items-center gap-1 px-2 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px] min-w-[44px] justify-center shrink-0"
             >
               <Plus className="size-4" />
-              <span>Buat Baru</span>
+              <span className="hidden sm:inline">Buat Baru</span>
             </button>
             <Link
               href="/pelanggan"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+              aria-label="Pelanggan"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px] min-w-[44px] justify-center shrink-0"
             >
               <Users className="size-4" />
-              <span>Pelanggan</span>
+              <span className="hidden sm:inline">Pelanggan</span>
             </Link>
             <Link
               href="/dokumen/riwayat"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+              aria-label="Riwayat"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px] min-w-[44px] justify-center shrink-0"
             >
               <History className="size-4" />
-              <span>Riwayat</span>
+              <span className="hidden sm:inline">Riwayat</span>
             </Link>
             <Link
               href="/pengaturan"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
               aria-label="Pengaturan"
+              className="flex items-center gap-1.5 px-2 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px] min-w-[44px] justify-center shrink-0"
             >
               <Settings className="size-4" />
-              <span>Pengaturan</span>
+              <span className="hidden sm:inline">Pengaturan</span>
             </Link>
           </div>
         </div>

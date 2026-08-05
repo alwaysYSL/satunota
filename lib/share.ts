@@ -3,6 +3,7 @@
 
 import { toPng } from "html-to-image"
 import type { PreviewData } from "@/components/shared/document-preview"
+import { describeError } from "@/lib/errors"
 
 const JUDUL_MAP = {
   nota: "Nota Penjualan",
@@ -17,17 +18,51 @@ const FILENAME_PREFIX = {
 } as const
 
 /**
+ * Convert data URL to Blob without fetch overhead or data URL fetch errors.
+ */
+function dataURLtoBlob(dataurl: string): Blob {
+  const arr = dataurl.split(",")
+  const mimeMatch = arr[0].match(/:(.*?);/)
+  const mime = mimeMatch ? mimeMatch[1] : "image/png"
+  const bstr = atob(arr[1])
+  let n = bstr.length
+  const u8arr = new Uint8Array(n)
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n)
+  }
+  return new Blob([u8arr], { type: mime })
+}
+
+/**
  * Mengubah elemen HTML menjadi Blob gambar PNG menggunakan html-to-image.
  */
 export async function exportPNG(element: HTMLElement): Promise<Blob> {
-  const dataUrl = await toPng(element, {
-    quality: 0.95,
-    pixelRatio: 2,
-    backgroundColor: "#ffffff",
-  })
+  const imgs = Array.from(element.querySelectorAll("img"))
+  await Promise.all(
+    imgs.map(async (img) => {
+      if (img.complete && img.naturalWidth > 0) return
+      try {
+        await img.decode()
+      } catch {
+        /* ditangani imagePlaceholder */
+      }
+    }),
+  )
 
-  const res = await fetch(dataUrl)
-  return await res.blob()
+  try {
+    const dataUrl = await toPng(element, {
+      quality: 0.95,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+      cacheBust: false,
+      skipFonts: true,
+      imagePlaceholder: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+    })
+    return dataURLtoBlob(dataUrl)
+  } catch (err) {
+    console.warn("toPng percobaan gagal:", describeError(err))
+    throw new Error(`Ekspor PNG gagal: ${describeError(err)}`)
+  }
 }
 
 /**

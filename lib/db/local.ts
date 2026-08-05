@@ -221,6 +221,40 @@ db.version(2).stores({
   })
 })
 
+// v3: Normalisasi logoUrl > 200KB & backfill userId guestId (TUGAS 2 & 4)
+import { normalizeLogoDataUrl } from "../logo"
+
+db.version(3).stores({
+  businesses:    "id, userId, updatedAt",
+  customers:     "id, ownerId, businessId, nama, updatedAt, deletedAt",
+  products:      "id, businessId, nama, updatedAt, deletedAt",
+  documents:     "id, ownerId, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
+  documentItems: "id, documentId, urutan",
+  payments:      "id, ownerId, documentId, tanggal",
+  outbox:        "id, entity, entityId, createdAt, attempts",
+  meta:          "key",
+}).upgrade(async (tx) => {
+  const metaGuest = await tx.table("meta").get("guestId")
+  const guestId = metaGuest && typeof metaGuest.value === "string" ? metaGuest.value : null
+
+  await tx.table("businesses").toCollection().modify(async (biz: Record<string, unknown>) => {
+    // 1. TUGAS 4: userId === null diberi id tamu dari meta.guestId
+    if ((biz.userId === null || biz.userId === undefined) && guestId) {
+      biz.userId = guestId
+    }
+
+    // 2. TUGAS 2: jika logoUrl string > 200KB, normalkan/bersihkan
+    if (typeof biz.logoUrl === "string" && biz.logoUrl.length > 200 * 1024) {
+      try {
+        const normalized = await normalizeLogoDataUrl(biz.logoUrl)
+        biz.logoUrl = normalized
+      } catch {
+        biz.logoUrl = null
+      }
+    }
+  })
+})
+
 if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
   ;(window as unknown as { db: typeof db }).db = db
 }

@@ -32,6 +32,10 @@ import { can } from "@/lib/entitlements"
 import { StrukImage } from "@/components/struk/struk-image"
 import type { StrukDocInput, StrukBusinessInput } from "@/lib/struk/lines"
 import { buildItemSubtotalMap } from "@/lib/calc-map"
+import { db } from "@/lib/db/local"
+import { getActiveOwnerId } from "@/lib/db/owner"
+
+import { describeError } from "@/lib/errors"
 
 type ShareSheetProps = {
   open: boolean
@@ -75,6 +79,26 @@ function ShareSheetContent({
     [state.items, cr.itemSubtotals],
   )
 
+  const [logoUrl, setLogoUrl] = React.useState<string | null>(null)
+  const [logoLoading, setLogoLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    async function loadLogo() {
+      try {
+        const ownerId = await getActiveOwnerId()
+        const biz = await db.businesses.where("userId").equals(ownerId).first()
+        if (biz?.logoUrl) {
+          setLogoUrl(biz.logoUrl)
+        } else {
+          setLogoUrl(null)
+        }
+      } finally {
+        setLogoLoading(false)
+      }
+    }
+    loadLogo()
+  }, [])
+
   const previewData: PreviewData = React.useMemo(
     () => ({
       tipe: state.tipe,
@@ -88,6 +112,7 @@ function ShareSheetContent({
       businessNama: state.businessNama,
       businessAlamat: state.businessAlamat,
       businessTelepon: state.businessTelepon,
+      logoUrl,
       items: state.items
         .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
         .map((it) => ({
@@ -105,7 +130,7 @@ function ShareSheetContent({
       ongkir: state.ongkir,
       biayaLain: state.biayaLain,
     }),
-    [state, cr, subtotalMap],
+    [state, cr, subtotalMap, logoUrl],
   )
 
   const strukDoc: StrukDocInput = React.useMemo(
@@ -135,7 +160,7 @@ function ShareSheetContent({
       dibayar: state.dibayar,
       catatan: state.catatan,
     }),
-    [state, cr, subtotalMap],
+    [state, subtotalMap],
   )
 
   const strukBusiness: StrukBusinessInput = React.useMemo(
@@ -163,7 +188,7 @@ function ShareSheetContent({
       onOpenChange(false)
     } catch (e) {
       console.error(e)
-      setErrorMsg("Gagal mengunduh PDF. Silakan coba lagi.")
+      setErrorMsg(`Gagal mengunduh PDF: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
     }
@@ -182,7 +207,7 @@ function ShareSheetContent({
       onOpenChange(false)
     } catch (e) {
       console.error(e)
-      setErrorMsg("Gagal menyimpan gambar. Silakan coba lagi.")
+      setErrorMsg(`Gagal menyimpan gambar: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
     }
@@ -221,7 +246,7 @@ function ShareSheetContent({
           if (e instanceof Error && e.name === "AbortError") {
             return
           }
-          console.warn("Web Share API gagal, beralih ke unduhan:", e)
+          console.warn("Web Share API gagal, beralih ke unduhan:", describeError(e))
         }
       }
 
@@ -229,7 +254,7 @@ function ShareSheetContent({
       onOpenChange(false)
     } catch (e) {
       console.error(e)
-      setErrorMsg("Gagal menyimpan gambar struk. Silakan coba lagi.")
+      setErrorMsg(`Gagal menyimpan gambar struk: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
     }
@@ -243,37 +268,35 @@ function ShareSheetContent({
       try {
         blob = await getPngBlob()
       } catch (e) {
-        console.warn("Gagal membuat PNG untuk share, lanjut tanpa file:", e)
+        console.warn("Gagal membuat PNG untuk share, lanjut tanpa file:", describeError(e))
       }
       await shareWhatsApp(previewData, blob)
       onOpenChange(false)
     } catch (e) {
       console.error(e)
-      setErrorMsg("Gagal membagikan ke WhatsApp.")
+      setErrorMsg(`Gagal membagikan ke WhatsApp: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
     }
   }
 
   const handleThermalClick = () => {
-    if (can("cetak_thermal", plan)) {
+    if (!can("cetak_thermal", plan)) {
       setFreeProDialogOpen(true)
-    } else {
-      setGuestDialogOpen(true)
+      return
     }
+    router.push(`/dokumen/riwayat`)
   }
 
   return (
     <>
       <DrawerContent className="max-h-[85dvh]">
-        {/* Hidden container for rendering DocumentPreview if previewRef is not available */}
-        {!previewRef?.current && (
-          <div className="absolute left-[-9999px] top-[-9999px] w-[720px] bg-white">
-            <div ref={internalPreviewRef}>
-              <DocumentPreview data={previewData} />
-            </div>
+        {/* Hidden container for rendering DocumentPreview */}
+        <div className="absolute left-[-9999px] top-[-9999px] w-[720px] bg-white">
+          <div ref={internalPreviewRef}>
+            <DocumentPreview data={previewData} />
           </div>
-        )}
+        </div>
 
         {/* Hidden containers for rendering StrukImage for 58mm (32 chars) and 80mm (48 chars) */}
         <div className="absolute left-[-9999px] top-[-9999px]">
@@ -301,7 +324,7 @@ function ShareSheetContent({
               <button
                 type="button"
                 className="flex h-[44px] w-[44px] items-center justify-center rounded-sm text-fg-secondary hover:bg-bg-hover"
-                aria-label="Tutup sheet bagikan"
+                aria-label="Tutup menu bagikan"
               >
                 <X className="size-5" />
               </button>
@@ -371,7 +394,7 @@ function ShareSheetContent({
           {/* Opsi 3: Simpan Gambar PNG */}
           <button
             type="button"
-            disabled={loadingAction !== null}
+            disabled={loadingAction !== null || logoLoading}
             onClick={handleDownloadPng}
             className="flex items-center justify-between w-full min-h-[44px] px-3 py-2.5 rounded-md border border-line-strong hover:bg-bg-hover transition-colors text-left disabled:opacity-50"
           >
@@ -394,7 +417,7 @@ function ShareSheetContent({
           {/* Opsi 4: Kirim ke WhatsApp */}
           <button
             type="button"
-            disabled={loadingAction !== null}
+            disabled={loadingAction !== null || logoLoading}
             onClick={handleShareWa}
             className="flex items-center justify-between w-full min-h-[44px] px-3 py-2.5 rounded-md border border-line-strong hover:bg-bg-hover transition-colors text-left disabled:opacity-50"
           >

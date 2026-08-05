@@ -17,15 +17,13 @@ import {
   X,
   Send,
   CheckCircle2,
-  LogOut,
   Settings,
 } from "lucide-react"
 import { db, type LocalDocument } from "@/lib/db/local"
-import { getActiveOwnerId, updateLastUserId } from "@/lib/db/owner"
+import { getActiveOwnerId } from "@/lib/db/owner"
 import { createClient } from "@/lib/supabase/client"
 import { statusTampil, type DisplayStatus } from "@/lib/status"
 import {
-  calculateDisplayStatus,
   softDeleteDocument,
   duplicateDocument,
   convertInvoiceToKwitansi,
@@ -93,18 +91,6 @@ export default function HistoryPage() {
   function showToast(msg: string) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 3000)
-  }
-
-  async function handleLogout() {
-    try {
-      const supabase = createClient()
-      await supabase.auth.signOut()
-      await updateLastUserId(null)
-      setIsLoggedIn(false)
-      showToast("Berhasil keluar dari akun")
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err))
-    }
   }
 
   // Filter dokumen
@@ -200,7 +186,7 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[720px] px-4 pb-24 pt-4 text-fg">
+    <div className="mx-auto w-full max-w-[720px] px-4 pb-8 pt-4 text-fg">
       {/* Toast Notifikasi (MASALAH E: Token CSS) */}
       {toastMsg && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-fg text-bg text-[13px] px-4 py-2 rounded-md shadow-md animate-in fade-in slide-in-from-top-2 flex items-center gap-2">
@@ -209,43 +195,45 @@ export default function HistoryPage() {
       )}
 
       {/* Header Utama */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-y-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <Link
             href="/"
-            className="flex items-center justify-center h-11 w-11 rounded-md hover:bg-bg-hover text-fg-secondary transition-colors"
+            className="flex items-center justify-center h-11 w-11 rounded-md hover:bg-bg-hover text-fg-secondary transition-colors shrink-0"
             aria-label="Kembali ke editor"
           >
             <ChevronLeft className="size-5" />
           </Link>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-[22px] sm:text-[24px] font-bold text-fg tracking-tight">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <h1 className="text-[22px] sm:text-[24px] font-bold text-fg tracking-tight truncate min-w-0">
               Riwayat Dokumen
             </h1>
             {documents && (
-              <span className="text-[13px] text-fg-tertiary font-medium">
+              <span className="text-[13px] text-fg-tertiary font-medium shrink-0">
                 ({filteredDocs.length})
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Link
             href="/pengaturan"
-            className="flex items-center gap-1.5 px-3 py-2 bg-bg-subtle text-fg-secondary hover:text-fg text-[13px] font-medium rounded-md transition-colors min-h-[44px]"
+            aria-label="Pengaturan"
+            className="flex items-center gap-1.5 px-3 py-2 bg-bg-subtle text-fg-secondary hover:text-fg text-[13px] font-medium rounded-md transition-colors min-h-[44px] shrink-0"
           >
             <Settings className="size-4" />
-            <span>Pengaturan</span>
+            <span className="hidden sm:inline">Pengaturan</span>
           </Link>
 
           <button
             type="button"
             onClick={handleCreateNew}
-            className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-[13px] font-medium rounded-md hover:bg-brand-hover transition-colors min-h-[44px]"
+            aria-label="Buat Baru"
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-[13px] font-medium rounded-md hover:bg-brand-hover transition-colors min-h-[44px] shrink-0"
           >
             <Plus className="size-4" />
-            <span>Buat Baru</span>
+            <span className="hidden sm:inline">Buat Baru</span>
           </button>
         </div>
       </div>

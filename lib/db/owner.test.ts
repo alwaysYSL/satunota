@@ -225,4 +225,71 @@ describe("Owner ID & Data Isolation", () => {
     expect(aDocs).toHaveLength(1)
     expect(aDocs[0].id).toBe(docA.id)
   })
+
+  it("dua baris businesses dengan userId berbeda: masing-masing pemilik hanya melihat logo dan identitas usahanya sendiri", async () => {
+    const user1 = "user-1-uuid"
+    const user2 = "user-2-uuid"
+    const now = new Date().toISOString()
+
+    await db.businesses.bulkPut([
+      {
+        id: "biz-1",
+        userId: user1,
+        nama: "Usaha Pemilik 1",
+        logoUrl: "data:image/png;base64,LOGO1",
+        alamat: "Alamat 1",
+        telepon: "0811",
+        email: "user1@test.com",
+        npwp: null,
+        polaNota: "NT/{0001}",
+        polaInvoice: "INV/{0001}",
+        polaKwitansi: "KW/{0001}",
+        defaultPajak: 0,
+        defaultCatatan: null,
+        qrisUrl: null,
+        rekening: null,
+        ttdUrl: null,
+        plan: "free",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "biz-2",
+        userId: user2,
+        nama: "Usaha Pemilik 2",
+        logoUrl: "data:image/png;base64,LOGO2",
+        alamat: "Alamat 2",
+        telepon: "0822",
+        email: "user2@test.com",
+        npwp: null,
+        polaNota: "NT/{0001}",
+        polaInvoice: "INV/{0001}",
+        polaKwitansi: "KW/{0001}",
+        defaultPajak: 0,
+        defaultCatatan: null,
+        qrisUrl: null,
+        rekening: null,
+        ttdUrl: null,
+        plan: "pro",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ])
+
+    // Pemilik 1 query kueri berindeks userId
+    const bizUser1 = await db.businesses.where("userId").equals(user1).first()
+    expect(bizUser1).toBeDefined()
+    expect(bizUser1?.nama).toBe("Usaha Pemilik 1")
+    expect(bizUser1?.logoUrl).toBe("data:image/png;base64,LOGO1")
+
+    // Pemilik 2 query kueri berindeks userId
+    const bizUser2 = await db.businesses.where("userId").equals(user2).first()
+    expect(bizUser2).toBeDefined()
+    expect(bizUser2?.nama).toBe("Usaha Pemilik 2")
+    expect(bizUser2?.logoUrl).toBe("data:image/png;base64,LOGO2")
+
+    // Pengguna 3 yang belum punya profil usaha -> mengembalikan undefined/null, TIDAK jatuh ke biz-1 atau biz-2
+    const bizUser3 = await db.businesses.where("userId").equals("user-3-uuid").first()
+    expect(bizUser3).toBeUndefined()
+  })
 })

@@ -23,7 +23,7 @@ export async function ensureGuestBusiness(): Promise<string> {
   await db.transaction("rw", [db.businesses, db.meta], async () => {
     await db.businesses.add({
       id: businessId,
-      userId: null,
+      userId: businessId,
       nama: "",
       logoUrl: null,
       alamat: null,

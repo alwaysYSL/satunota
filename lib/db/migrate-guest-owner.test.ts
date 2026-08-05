@@ -283,7 +283,7 @@ describe("Migrasi Guest -> Account Owner ID Guard", () => {
     expect(accountDocs).toHaveLength(1) // Hanya doc1
     expect(accountDocs[0].id).toBe(doc1Id)
 
-    let guestDocs = await db.documents.where("ownerId").equals(guestOwnerId).toArray()
+    const guestDocs = await db.documents.where("ownerId").equals(guestOwnerId).toArray()
     expect(guestDocs).toHaveLength(1)
     expect(guestDocs[0].id).toBe(doc2Id)
 

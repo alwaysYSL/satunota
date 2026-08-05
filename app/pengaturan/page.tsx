@@ -25,6 +25,7 @@ import { db, type LocalBusiness } from "@/lib/db/local"
 import { getActiveOwnerId, updateLastUserId } from "@/lib/db/owner"
 import { createClient } from "@/lib/supabase/client"
 import { validateDocPattern } from "@/lib/pattern"
+import { useEditorStore } from "@/lib/stores/editor-store"
 import {
   getExportDataForActiveOwner,
   toCsvDokumen,
@@ -35,6 +36,9 @@ import {
 import { ensureWeeklyBackup } from "@/lib/retention"
 import { formatTanggal } from "@/lib/format"
 import { v7 as uuidv7 } from "uuid"
+
+import { normalizeLogo, getDataUrlByteSize } from "@/lib/logo"
+import { describeError } from "@/lib/errors"
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -54,8 +58,7 @@ export default function SettingsPage() {
   const [polaKwitansi, setPolaKwitansi] = useState("KW/{YY}{MM}/{0001}")
 
   const [defaultPajak, setDefaultPajak] = useState(0)
-  const [logoBlob, setLogoBlob] = useState<Blob | string | null>(null)
-  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
 
   // System Backup Info
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null)
@@ -68,51 +71,32 @@ export default function SettingsPage() {
   // Fetch Business Data
   const business = useLiveQuery(async () => {
     const ownerId = await getActiveOwnerId()
-    const allBiz = await db.businesses.toArray()
-    return allBiz.find((b) => b.userId === ownerId) || allBiz[0] || null
+    return (await db.businesses.where("userId").equals(ownerId).first()) || null
   }, [])
 
   // Sync state when business changes
-  useEffect(() => {
-    if (business) {
-      setNama(business.nama || "")
-      setAlamat(business.alamat || "")
-      setTelepon(business.telepon || "")
-      setEmail(business.email || "")
-      setNpwp(business.npwp || "")
-      setPolaNota(business.polaNota || "NT/{YY}{MM}/{0001}")
-      setPolaInvoice(business.polaInvoice || "INV/{YY}{MM}/{0001}")
-      setPolaKwitansi(business.polaKwitansi || "KW/{YY}{MM}/{0001}")
-      setDefaultPajak(typeof business.defaultPajak === "number" ? business.defaultPajak : 0)
+  const [prevBizId, setPrevBizId] = useState<string | null>(null)
+  if (business && business.id !== prevBizId) {
+    setPrevBizId(business.id)
+    setNama(business.nama || "")
+    setAlamat(business.alamat || "")
+    setTelepon(business.telepon || "")
+    setEmail(business.email || "")
+    setNpwp(business.npwp || "")
+    setPolaNota(business.polaNota || "NT/{YY}{MM}/{0001}")
+    setPolaInvoice(business.polaInvoice || "INV/{YY}{MM}/{0001}")
+    setPolaKwitansi(business.polaKwitansi || "KW/{YY}{MM}/{0001}")
+    setDefaultPajak(typeof business.defaultPajak === "number" ? business.defaultPajak : 0)
 
-      if (business.logoUrl) {
-        setLogoBlob(business.logoUrl)
-      }
-    }
-  }, [business])
-
-  // Manage Object URL for logo preview
-  useEffect(() => {
-    if (!logoBlob) {
-      setLogoPreviewUrl(null)
-      return
-    }
-
-    let url: string
-    if (logoBlob instanceof Blob) {
-      url = URL.createObjectURL(logoBlob)
+    if (business.logoUrl) {
+      setLogoDataUrl(business.logoUrl)
     } else {
-      url = String(logoBlob)
+      setLogoDataUrl(null)
     }
+  }
 
-    setLogoPreviewUrl(url)
-
-    return () => {
-      if (logoBlob instanceof Blob && url) {
-        URL.revokeObjectURL(url)
-      }
-    }
-  }, [logoBlob])
+  // Derived logo preview URL
+  const logoPreviewUrl = logoDataUrl
 
   // Check auth state & lastBackupAt
   useEffect(() => {
@@ -140,21 +124,22 @@ export default function SettingsPage() {
   }
 
   // Handle Logo Upload
-  function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (!file.type.startsWith("image/")) {
-      showToast("File harus berupa gambar (PNG/JPG)")
-      return
+    try {
+      const normalizedDataUrl = await normalizeLogo(file)
+      setLogoDataUrl(normalizedDataUrl)
+      const kb = Math.round(getDataUrlByteSize(normalizedDataUrl) / 1024)
+      showToast(`Logo siap (${kb} KB). Klik Simpan Pengaturan.`)
+    } catch (err) {
+      showToast(describeError(err))
     }
-
-    setLogoBlob(file)
-    showToast("Logo berhasil dipilih. Klik Simpan Pengaturan.")
   }
 
   function handleRemoveLogo() {
-    setLogoBlob(null)
+    setLogoDataUrl(null)
     showToast("Logo dihapus. Klik Simpan Pengaturan.")
   }
 
@@ -182,9 +167,9 @@ export default function SettingsPage() {
 
     const updatedBiz: LocalBusiness = {
       id: targetId,
-      userId: isLoggedIn ? userId : null,
+      userId: ownerId, // TUGAS 4: baris usaha milik tamu HARUS memakai id tamu, bukan null
       nama: nama.trim() || "Usaha Saya",
-      logoUrl: logoBlob as string | null,
+      logoUrl: logoDataUrl,
       alamat: alamat.trim() || null,
       telepon: telepon.trim() || null,
       email: email.trim() || null,
@@ -204,14 +189,32 @@ export default function SettingsPage() {
 
     await db.businesses.put(updatedBiz)
 
-    // Jika pengguna login, antrekan ke outbox (outbox dipasang, tidak perlu disinkronkan sekarang)
+    // TUGAS 4: Perbarui editor store HANYA bila draf aktif belum pernah diubah manual pada field tersebut
+    const storeState = useEditorStore.getState()
+    const activeDocId = storeState.documentId
+    const existingDoc = activeDocId ? await db.documents.get(activeDocId) : null
+    const oldBizNama = business?.nama ?? ""
+    const oldBizAlamat = business?.alamat ?? ""
+    const oldBizTelepon = business?.telepon ?? ""
+
+    if (!existingDoc) {
+      useEditorStore.setState((s) => ({
+        businessNama: s.businessNama === oldBizNama || !s.businessNama ? updatedBiz.nama : s.businessNama,
+        businessAlamat: s.businessAlamat === oldBizAlamat || !s.businessAlamat ? (updatedBiz.alamat ?? "") : s.businessAlamat,
+        businessTelepon: s.businessTelepon === oldBizTelepon || !s.businessTelepon ? (updatedBiz.telepon ?? "") : s.businessTelepon,
+      }))
+    }
+
+    // Jika pengguna login, antrekan ke outbox (tanpa logoUrl per TUGAS 6)
     if (isLoggedIn && userId) {
+      // TODO: Sinkronisasi logo berkas terpisah digeser pasca-rilis
+      const { logoUrl: _ignoredLogo, ...payloadWithoutLogo } = updatedBiz
       await db.outbox.add({
         id: uuidv7(),
         entity: "business",
         entityId: targetId,
         op: "upsert",
-        payload: updatedBiz,
+        payload: payloadWithoutLogo,
         updatedAt: now,
         createdAt: now,
         attempts: 0,
@@ -346,7 +349,7 @@ export default function SettingsPage() {
                   className="hidden"
                 />
               </label>
-              {logoBlob && (
+              {logoDataUrl && (
                 <button
                   type="button"
                   onClick={handleRemoveLogo}

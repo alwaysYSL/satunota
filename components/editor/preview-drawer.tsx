@@ -11,6 +11,8 @@ import { DocumentPreview, type PreviewData } from "@/components/shared/document-
 import { useEditorStore, useCalcResult } from "@/lib/stores/editor-store"
 import { ShareSheet } from "./share-sheet"
 import { buildItemSubtotalMap } from "@/lib/calc-map"
+import { db } from "@/lib/db/local"
+import { getActiveOwnerId } from "@/lib/db/owner"
 
 export function PreviewDrawer() {
   const showPreview = useEditorStore((s) => s.showPreview)
@@ -40,6 +42,21 @@ function PreviewDrawerContent() {
     [state.items, cr.itemSubtotals],
   )
 
+  const [logoUrl, setLogoUrl] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    async function loadLogo() {
+      const ownerId = await getActiveOwnerId()
+      const biz = await db.businesses.where("userId").equals(ownerId).first()
+      if (biz?.logoUrl) {
+        setLogoUrl(biz.logoUrl)
+      } else {
+        setLogoUrl(null)
+      }
+    }
+    loadLogo()
+  }, [])
+
   const previewData: PreviewData = React.useMemo(
     () => ({
       tipe: state.tipe,
@@ -56,6 +73,7 @@ function PreviewDrawerContent() {
       businessNama: state.businessNama,
       businessAlamat: state.businessAlamat,
       businessTelepon: state.businessTelepon,
+      logoUrl,
       items: state.items
         .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
         .map((it) => ({
@@ -73,7 +91,7 @@ function PreviewDrawerContent() {
       ongkir: state.ongkir,
       biayaLain: state.biayaLain,
     }),
-    [state, cr, subtotalMap],
+    [state, cr, subtotalMap, logoUrl],
   )
 
   return (

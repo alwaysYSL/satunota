@@ -7,10 +7,8 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertCircle, Download, UserPlus, X, ShieldAlert } from "lucide-react"
 import { db } from "@/lib/db/local"
-import { getActiveOwnerId } from "@/lib/db/owner"
 import { tahapRetensi, ensureWeeklyBackup, type RetentionStage } from "@/lib/retention"
 import { getExportDataForActiveOwner, toBackupJson, downloadFile } from "@/lib/export/index"
-import { Button } from "@/components/ui/button"
 
 export function RetentionBanner() {
   const [isGuest, setIsGuest] = useState(false)

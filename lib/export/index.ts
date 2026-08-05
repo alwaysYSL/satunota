@@ -6,12 +6,12 @@ import { getActiveOwnerId } from "../db/owner"
 import { statusTampil } from "../status"
 
 /**
- * Pembangun murni dokumen.csv (SCHEMA §11).
- * Awalan BOM UTF-8 (\uFEFF), pemisah koma, kutip ganda ter-escape, angka numerik polos tanpa Rp.
+ * Pembangun murni dokumen.csv (SCHEMA §11 amandemen Excel Indonesia).
+ * Awalan BOM UTF-8 (\uFEFF), pemisah titik koma (;), kutip ganda ter-escape, angka numerik polos tanpa Rp.
  */
 export function toCsvDokumen(docs: LocalDocument[], todayDate?: string): string {
   const today = todayDate || new Date().toISOString().split("T")[0]
-  const header = "nomor,tipe,tanggal,jatuh_tempo,pelanggan,status,subtotal,diskon,pajak,ongkir,biaya_lain,total,dibayar,sisa,catatan"
+  const header = "nomor;tipe;tanggal;jatuh_tempo;pelanggan;status;subtotal;diskon;pajak;ongkir;biaya_lain;total;dibayar;sisa;catatan"
 
   const escapeCsv = (val: string | null | undefined): string => {
     if (val === null || val === undefined) return '""'
@@ -40,17 +40,17 @@ export function toCsvDokumen(docs: LocalDocument[], todayDate?: string): string 
       doc.dibayar,
       doc.sisa,
       escapeCsv(doc.catatan || ""),
-    ].join(",")
+    ].join(";")
   })
 
   return "\uFEFF" + [header, ...rows].join("\r\n")
 }
 
 /**
- * Pembangun murni item.csv (SCHEMA §11).
+ * Pembangun murni item.csv (SCHEMA §11 amandemen Excel Indonesia).
  */
 export function toCsvItem(docs: LocalDocument[], items: LocalDocumentItem[]): string {
-  const header = "nomor_dokumen,urutan,nama,qty,satuan,harga_satuan,diskon_baris,subtotal"
+  const header = "nomor_dokumen;urutan;nama;qty;satuan;harga_satuan;diskon_baris;subtotal"
 
   const escapeCsv = (val: string | null | undefined): string => {
     if (val === null || val === undefined) return '""'
@@ -76,7 +76,7 @@ export function toCsvItem(docs: LocalDocument[], items: LocalDocumentItem[]): st
       it.hargaSatuan,
       it.diskonBaris,
       it.subtotal,
-    ].join(",")
+    ].join(";")
   })
 
   return "\uFEFF" + [header, ...rows].join("\r\n")
@@ -143,8 +143,7 @@ export function toBackupJson(data: {
 export async function getExportDataForActiveOwner() {
   const ownerId = await getActiveOwnerId()
 
-  const allBiz = await db.businesses.toArray()
-  const biz = allBiz.find((b) => b.userId === ownerId) || allBiz[0] || null
+  const biz = (await db.businesses.where("userId").equals(ownerId).first()) || null
 
   const customers = (await db.customers.where("ownerId").equals(ownerId).toArray())
     .filter((c) => !c.deletedAt)

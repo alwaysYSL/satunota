@@ -24,6 +24,7 @@ export type PreviewData = {
   businessNama: string
   businessAlamat: string
   businessTelepon: string
+  logoUrl?: string | null
 
   items: PreviewItem[]
   calc: CalcResult
@@ -60,11 +61,20 @@ export function DocumentPreview({ data }: { data: PreviewData }) {
   return (
     <div className="mx-auto max-w-[720px] bg-white text-black p-6 text-[13px] leading-tight rounded-none font-sans">
       {/* Header Dokumen */}
-      <div className="text-center pb-3 border-b-2 border-black mb-4">
-        <h1 className="text-[20px] font-bold tracking-wider uppercase m-0 text-black">{judul}</h1>
-        {data.nomor && (
-          <p className="text-[12px] text-black mt-1 font-medium">No: {data.nomor}</p>
-        )}
+      <div className="flex items-center justify-between pb-3 border-b-2 border-black mb-4 gap-4">
+        {data.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={data.logoUrl} alt="Logo Usaha" className="max-h-14 max-w-[140px] object-contain shrink-0" />
+        ) : <div className="w-10" />}
+
+        <div className="text-center flex-1">
+          <h1 className="text-[20px] font-bold tracking-wider uppercase m-0 text-black">{judul}</h1>
+          {data.nomor && (
+            <p className="text-[12px] text-black mt-1 font-medium">No: {data.nomor}</p>
+          )}
+        </div>
+
+        <div className="w-10 shrink-0" />
       </div>
 
       {/* Info Identitas Usaha & Pelanggan (2 Kolom) */}

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Mail } from "lucide-react"
@@ -137,12 +138,12 @@ export default function MasukPage() {
         )}
 
         <div className="mt-[var(--space-6)] text-center">
-          <a
+          <Link
             href="/"
             className="text-[13px] text-fg-secondary hover:text-fg transition-colors duration-[20ms] ease-in"
           >
             Kembali ke editor
-          </a>
+          </Link>
         </div>
       </div>
     </main>

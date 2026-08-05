@@ -87,14 +87,16 @@ export function NotionCurrencyInput({
     return num.toLocaleString("id-ID")
   }
 
+  const [prevValue, setPrevValue] = React.useState<number>(value)
   const [text, setText] = React.useState<string>(() => formatDisplay(value))
 
-  React.useEffect(() => {
+  if (prevValue !== value) {
+    setPrevValue(value)
     const cleanedTextNum = parseInt(text.replace(/\D/g, ""), 10) || 0
     if (cleanedTextNum !== value) {
       setText(formatDisplay(value))
     }
-  }, [value])
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value
@@ -152,14 +154,16 @@ export function NotionQtyInput({
     return String(n).replace(".", ",")
   }
 
+  const [prevValue, setPrevValue] = React.useState<number>(value)
   const [text, setText] = React.useState<string>(() => formatQty(value))
 
-  React.useEffect(() => {
+  if (prevValue !== value) {
+    setPrevValue(value)
     const cleanedFloat = parseQtyString(text)
     if (cleanedFloat !== value) {
       setText(formatQty(value))
     }
-  }, [value])
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value

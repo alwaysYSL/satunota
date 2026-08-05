@@ -22,8 +22,12 @@ export function CustomerAutofillInput() {
     let isCancelled = false
 
     if (!customerNama || customerNama.trim() === "") {
-      setSuggestions([])
-      setIsOpen(false)
+      Promise.resolve().then(() => {
+        if (!isCancelled) {
+          setSuggestions([])
+          setIsOpen(false)
+        }
+      })
       return
     }
 

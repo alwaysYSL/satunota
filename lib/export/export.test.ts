@@ -66,7 +66,7 @@ describe("Export CSV & JSON (SCHEMA §11)", () => {
     expect(csv.startsWith("\uFEFF")).toBe(true)
 
     // Header
-    expect(csv).toContain("nomor,tipe,tanggal,jatuh_tempo,pelanggan,status,subtotal,diskon,pajak,ongkir,biaya_lain,total,dibayar,sisa,catatan")
+    expect(csv).toContain("nomor;tipe;tanggal;jatuh_tempo;pelanggan;status;subtotal;diskon;pajak;ongkir;biaya_lain;total;dibayar;sisa;catatan")
 
     // Escaping double quote -> "" dan comma inside quotes
     expect(csv).toContain('"Toko ""Maju"" Jaya, PT"')
@@ -74,8 +74,8 @@ describe("Export CSV & JSON (SCHEMA §11)", () => {
     // Escaping newline inside quotes
     expect(csv).toContain('"Barang\nSudah Dikirim"')
 
-    // Plain numbers (no Rp, no thousand separator)
-    expect(csv).toContain("100000,0,11000,15000,0,126000,50000,76000")
+    // Plain numbers (no Rp, no thousand separator, semicolon separator)
+    expect(csv).toContain("100000;0;11000;15000;0;126000;50000;76000")
   })
 
   it("2. toCsvItem menghasilkan format CSV item ber-BOM dan angka polos", () => {
@@ -132,8 +132,8 @@ describe("Export CSV & JSON (SCHEMA §11)", () => {
 
     const csv = toCsvItem(docs, items)
     expect(csv.startsWith("\uFEFF")).toBe(true)
-    expect(csv).toContain("nomor_dokumen,urutan,nama,qty,satuan,harga_satuan,diskon_baris,subtotal")
-    expect(csv).toContain('"NT/001",0,"Kopi Gajah, 250g",2,"pcs",25000,0,50000')
+    expect(csv).toContain("nomor_dokumen;urutan;nama;qty;satuan;harga_satuan;diskon_baris;subtotal")
+    expect(csv).toContain('"NT/001";0;"Kopi Gajah, 250g";2;"pcs";25000;0;50000')
   })
 
   it("3. toBackupJson menghasilkan struktur JSON persis SCHEMA §11", () => {
