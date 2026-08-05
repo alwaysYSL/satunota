@@ -221,9 +221,7 @@ db.version(2).stores({
   })
 })
 
-// v3: Normalisasi logoUrl > 200KB & backfill userId guestId (TUGAS 2 & 4)
-import { normalizeLogoDataUrl } from "../logo"
-
+// v3: Backfill userId guestId (T2 & T4)
 db.version(3).stores({
   businesses:    "id, userId, updatedAt",
   customers:     "id, ownerId, businessId, nama, updatedAt, deletedAt",
@@ -237,20 +235,9 @@ db.version(3).stores({
   const metaGuest = await tx.table("meta").get("guestId")
   const guestId = metaGuest && typeof metaGuest.value === "string" ? metaGuest.value : null
 
-  await tx.table("businesses").toCollection().modify(async (biz: Record<string, unknown>) => {
-    // 1. TUGAS 4: userId === null diberi id tamu dari meta.guestId
+  await tx.table("businesses").toCollection().modify((biz: Record<string, unknown>) => {
     if ((biz.userId === null || biz.userId === undefined) && guestId) {
       biz.userId = guestId
-    }
-
-    // 2. TUGAS 2: jika logoUrl string > 200KB, normalkan/bersihkan
-    if (typeof biz.logoUrl === "string" && biz.logoUrl.length > 200 * 1024) {
-      try {
-        const normalized = await normalizeLogoDataUrl(biz.logoUrl)
-        biz.logoUrl = normalized
-      } catch {
-        biz.logoUrl = null
-      }
     }
   })
 })

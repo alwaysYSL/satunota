@@ -122,18 +122,18 @@ describe("Export CSV & JSON (SCHEMA §11)", () => {
         documentId: docId,
         urutan: 0,
         nama: "Kopi Gajah, 250g",
-        qty: 2,
-        satuan: "pcs",
+        qty: 1.5,
+        satuan: "kg",
         hargaSatuan: 25000,
         diskonBaris: 0,
-        subtotal: 50000,
+        subtotal: 37500,
       },
     ]
 
     const csv = toCsvItem(docs, items)
     expect(csv.startsWith("\uFEFF")).toBe(true)
     expect(csv).toContain("nomor_dokumen;urutan;nama;qty;satuan;harga_satuan;diskon_baris;subtotal")
-    expect(csv).toContain('"NT/001";0;"Kopi Gajah, 250g";2;"pcs";25000;0;50000')
+    expect(csv).toContain('"NT/001";0;"Kopi Gajah, 250g";1,5;"kg";25000;0;37500')
   })
 
   it("3. toBackupJson menghasilkan struktur JSON persis SCHEMA §11", () => {

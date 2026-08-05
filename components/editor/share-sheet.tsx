@@ -187,7 +187,7 @@ function ShareSheetContent({
       await downloadPDF(previewData, size)
       onOpenChange(false)
     } catch (e) {
-      console.error(e)
+      console.error(describeError(e))
       setErrorMsg(`Gagal mengunduh PDF: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
@@ -206,7 +206,7 @@ function ShareSheetContent({
       downloadBlob(blob, `${prefix}${nomorSafe}.png`)
       onOpenChange(false)
     } catch (e) {
-      console.error(e)
+      console.error(describeError(e))
       setErrorMsg(`Gagal menyimpan gambar: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
@@ -253,7 +253,7 @@ function ShareSheetContent({
       downloadBlob(blob, filename)
       onOpenChange(false)
     } catch (e) {
-      console.error(e)
+      console.error(describeError(e))
       setErrorMsg(`Gagal menyimpan gambar struk: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
@@ -273,7 +273,7 @@ function ShareSheetContent({
       await shareWhatsApp(previewData, blob)
       onOpenChange(false)
     } catch (e) {
-      console.error(e)
+      console.error(describeError(e))
       setErrorMsg(`Gagal membagikan ke WhatsApp: ${describeError(e)}`)
     } finally {
       setLoadingAction(null)
@@ -282,10 +282,10 @@ function ShareSheetContent({
 
   const handleThermalClick = () => {
     if (!can("cetak_thermal", plan)) {
-      setFreeProDialogOpen(true)
+      setGuestDialogOpen(true)
       return
     }
-    router.push(`/dokumen/riwayat`)
+    setFreeProDialogOpen(true)
   }
 
   return (

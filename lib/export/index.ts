@@ -71,7 +71,7 @@ export function toCsvItem(docs: LocalDocument[], items: LocalDocumentItem[]): st
       escapeCsv(nomorDoc),
       it.urutan,
       escapeCsv(it.nama),
-      it.qty,
+      String(it.qty).replace(".", ","),
       escapeCsv(it.satuan),
       it.hargaSatuan,
       it.diskonBaris,

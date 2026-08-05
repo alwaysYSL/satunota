@@ -3,6 +3,7 @@
 
 import { db } from "./db/local"
 import { getExportDataForActiveOwner, toBackupJson } from "./export/index"
+import { getDataUrlByteSize, normalizeLogoDataUrl, LOGO_MAX_BYTES } from "./logo"
 
 export type RetentionInput = {
   guestStartedAt?: string | null
@@ -89,11 +90,31 @@ export async function ensureGuestRetentionMeta(): Promise<void> {
 }
 
 /**
+ * Memastikan semua logoUrl usaha ter-normalisasi jika ukurannya > LOGO_MAX_BYTES (T3).
+ */
+export async function ensureLogoNormalized(): Promise<void> {
+  const allBiz = await db.businesses.toArray()
+  for (const b of allBiz) {
+    if (b.logoUrl && typeof b.logoUrl === "string") {
+      if (getDataUrlByteSize(b.logoUrl) > LOGO_MAX_BYTES) {
+        try {
+          const normalized = await normalizeLogoDataUrl(b.logoUrl)
+          await db.businesses.update(b.id, { logoUrl: normalized })
+        } catch {
+          await db.businesses.update(b.id, { logoUrl: null })
+        }
+      }
+    }
+  }
+}
+
+/**
  * Menjalankan cadangan otomatis mingguan di latar (SRS §4.5 & TUGAS 3).
  * Bila now - meta.lastBackupAt >= 7 hari, siapkan file cadangan dan simpan di IndexedDB meta.
  */
 export async function ensureWeeklyBackup(nowIsoStr?: string): Promise<boolean> {
   await ensureGuestRetentionMeta()
+  await ensureLogoNormalized()
   const now = nowIsoStr || new Date().toISOString()
   const lastBackupEntry = await db.meta.get("lastBackupAt")
   const lastBackupAt = lastBackupEntry?.value as string | undefined
