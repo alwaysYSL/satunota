@@ -211,4 +211,89 @@ describe("buildStrukLines", () => {
     expect(hasTerbilang).toBe(true)
     expect(hasRupiah).toBe(true)
   })
+
+  it("TES WAJIB: items = [aktif A, baris kosong, aktif B]: subtotal struk untuk A dan B harus benar (bukan tertukar)", () => {
+    // Array item awal di editor (3 item):
+    const allItems = [
+      { id: "1", nama: "Kopi Susu (A)", qty: 2, hargaSatuan: 15000, diskonBaris: 0 },
+      { id: "2", nama: "", qty: 1, hargaSatuan: 0, diskonBaris: 0 }, // baris kosong
+      { id: "3", nama: "Roti Bakar (B)", qty: 1, hargaSatuan: 12000, diskonBaris: 0 },
+    ]
+
+    // calcResult dihitung dari seluruh item di editor:
+    const calcRes = calc({
+      items: allItems,
+      diskonTipe: "nominal",
+      diskonNilai: 0,
+      pajakPersen: 0,
+      pajakInklusif: false,
+      ongkir: 0,
+      biayaLain: 0,
+      pembulatanAktif: false,
+      dibayar: 42000,
+    })
+    // calcRes.itemSubtotals adalah [30000, 0, 12000]
+
+    // Disaring (hanya item aktif A dan B yang punya nama/harga):
+    // item A subtotal: 30000, item B subtotal: 12000
+    const filteredItemsForStruk: StrukDocInput["items"] = [
+      { nama: "Kopi Susu (A)", qty: 2, hargaSatuan: 15000, subtotal: 30000 },
+      { nama: "Roti Bakar (B)", qty: 1, hargaSatuan: 12000, subtotal: 12000 },
+    ]
+
+    const doc: StrukDocInput = {
+      tipe: "nota",
+      nomor: "NT/2608/0010",
+      tanggal: "2026-08-05",
+      items: filteredItemsForStruk,
+      dibayar: 42000,
+    }
+
+    const lines = buildStrukLines(doc, calcRes, sampleBusiness, 32)
+    const lineA = lines.find((l) => l.includes("Kopi Susu"))
+    const lineB = lines.find((l) => l.includes("Roti Bakar"))
+
+    expect(lineA).toBeDefined()
+    expect(lineA).toContain("Rp 30.000") // 2 * 15000
+
+    expect(lineB).toBeDefined()
+    expect(lineB).toContain("Rp 12.000") // 1 * 12000 (bukan Rp 0 dari baris kosong)
+  })
+
+  it("TES WAJIB: kasus normal tanpa baris kosong tetap sama hasilnya", () => {
+    const allItems = [
+      { id: "1", nama: "Kopi Susu (A)", qty: 2, hargaSatuan: 15000, diskonBaris: 0 },
+      { id: "2", nama: "Roti Bakar (B)", qty: 1, hargaSatuan: 12000, diskonBaris: 0 },
+    ]
+
+    const calcRes = calc({
+      items: allItems,
+      diskonTipe: "nominal",
+      diskonNilai: 0,
+      pajakPersen: 0,
+      pajakInklusif: false,
+      ongkir: 0,
+      biayaLain: 0,
+      pembulatanAktif: false,
+      dibayar: 42000,
+    })
+
+    const doc: StrukDocInput = {
+      tipe: "nota",
+      nomor: "NT/2608/0011",
+      tanggal: "2026-08-05",
+      items: [
+        { nama: "Kopi Susu (A)", qty: 2, hargaSatuan: 15000, subtotal: 30000 },
+        { nama: "Roti Bakar (B)", qty: 1, hargaSatuan: 12000, subtotal: 12000 },
+      ],
+      dibayar: 42000,
+    }
+
+    const lines = buildStrukLines(doc, calcRes, sampleBusiness, 32)
+    const lineA = lines.find((l) => l.includes("Kopi Susu"))
+    const lineB = lines.find((l) => l.includes("Roti Bakar"))
+
+    expect(lineA).toContain("Rp 30.000")
+    expect(lineB).toContain("Rp 12.000")
+  })
 })

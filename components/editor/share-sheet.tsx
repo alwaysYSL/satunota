@@ -31,6 +31,7 @@ import { usePlan } from "@/lib/hooks/use-plan"
 import { can } from "@/lib/entitlements"
 import { StrukImage } from "@/components/struk/struk-image"
 import type { StrukDocInput, StrukBusinessInput } from "@/lib/struk/lines"
+import { buildItemSubtotalMap } from "@/lib/calc-map"
 
 type ShareSheetProps = {
   open: boolean
@@ -69,6 +70,11 @@ function ShareSheetContent({
   const [guestDialogOpen, setGuestDialogOpen] = React.useState(false)
   const [freeProDialogOpen, setFreeProDialogOpen] = React.useState(false)
 
+  const subtotalMap = React.useMemo(
+    () => buildItemSubtotalMap(state.items, cr.itemSubtotals),
+    [state.items, cr.itemSubtotals],
+  )
+
   const previewData: PreviewData = React.useMemo(
     () => ({
       tipe: state.tipe,
@@ -84,12 +90,12 @@ function ShareSheetContent({
       businessTelepon: state.businessTelepon,
       items: state.items
         .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
-        .map((it, idx) => ({
+        .map((it) => ({
           nama: it.nama,
           qty: it.qty,
           satuan: it.satuan,
           hargaSatuan: it.hargaSatuan,
-          subtotal: cr.itemSubtotals[idx] ?? 0,
+          subtotal: subtotalMap.get(it.id) ?? 0,
         })),
       calc: cr,
       diskonTipe: state.diskonTipe,
@@ -99,7 +105,7 @@ function ShareSheetContent({
       ongkir: state.ongkir,
       biayaLain: state.biayaLain,
     }),
-    [state, cr],
+    [state, cr, subtotalMap],
   )
 
   const strukDoc: StrukDocInput = React.useMemo(
@@ -112,13 +118,13 @@ function ShareSheetContent({
       diterimaDari: state.diterimaDari,
       items: state.items
         .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
-        .map((it, idx) => ({
+        .map((it) => ({
           nama: it.nama,
           qty: it.qty,
           satuan: it.satuan,
           hargaSatuan: it.hargaSatuan,
           diskonBaris: it.diskonBaris,
-          subtotal: cr.itemSubtotals[idx] ?? 0,
+          subtotal: subtotalMap.get(it.id) ?? 0,
         })),
       diskonTipe: state.diskonTipe,
       diskonNilai: state.diskonNilai,
@@ -129,7 +135,7 @@ function ShareSheetContent({
       dibayar: state.dibayar,
       catatan: state.catatan,
     }),
-    [state, cr],
+    [state, cr, subtotalMap],
   )
 
   const strukBusiness: StrukBusinessInput = React.useMemo(

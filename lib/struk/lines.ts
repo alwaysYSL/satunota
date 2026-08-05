@@ -165,8 +165,8 @@ export function buildStrukLines(
   const validItems = doc.items.filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
   validItems.forEach((item, idx) => {
     const itemSubtotal =
-      calcResult.itemSubtotals[idx] ??
       item.subtotal ??
+      calcResult.itemSubtotals[idx] ??
       item.qty * item.hargaSatuan - (item.diskonBaris || 0)
     const subtotalStr = formatRupiah(itemSubtotal)
 

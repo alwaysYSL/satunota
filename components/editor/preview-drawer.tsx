@@ -10,6 +10,7 @@ import {
 import { DocumentPreview, type PreviewData } from "@/components/shared/document-preview"
 import { useEditorStore, useCalcResult } from "@/lib/stores/editor-store"
 import { ShareSheet } from "./share-sheet"
+import { buildItemSubtotalMap } from "@/lib/calc-map"
 
 export function PreviewDrawer() {
   const showPreview = useEditorStore((s) => s.showPreview)
@@ -34,6 +35,11 @@ function PreviewDrawerContent() {
   const previewRef = React.useRef<HTMLDivElement>(null)
   const [showShare, setShowShare] = React.useState(false)
 
+  const subtotalMap = React.useMemo(
+    () => buildItemSubtotalMap(state.items, cr.itemSubtotals),
+    [state.items, cr.itemSubtotals],
+  )
+
   const previewData: PreviewData = React.useMemo(
     () => ({
       tipe: state.tipe,
@@ -52,12 +58,12 @@ function PreviewDrawerContent() {
       businessTelepon: state.businessTelepon,
       items: state.items
         .filter((it) => it.nama.trim() !== "" || it.hargaSatuan > 0)
-        .map((it, idx) => ({
+        .map((it) => ({
           nama: it.nama,
           qty: it.qty,
           satuan: it.satuan,
           hargaSatuan: it.hargaSatuan,
-          subtotal: cr.itemSubtotals[idx] ?? 0,
+          subtotal: subtotalMap.get(it.id) ?? 0,
         })),
       calc: cr,
       diskonTipe: state.diskonTipe,
@@ -67,7 +73,7 @@ function PreviewDrawerContent() {
       ongkir: state.ongkir,
       biayaLain: state.biayaLain,
     }),
-    [state, cr],
+    [state, cr, subtotalMap],
   )
 
   return (
