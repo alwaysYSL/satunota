@@ -127,25 +127,29 @@ export function paymentToRow(p: LocalPayment) {
 
 /**
  * Unggah seluruh data tamu ke Supabase, lalu tandai business lokal milik userId.
+ */
+export async function isUserMigrated(userId: string): Promise<boolean> {
+  const entry1 = await db.meta.get(`guestMigratedTo:${userId}`)
+  if (entry1 && entry1.value === userId) return true
+  const entry2 = await db.meta.get("migratedForUser")
+  if (entry2 && entry2.value === userId) return true
+  return false
+}
+
+export async function markUserAsMigrated(userId: string): Promise<void> {
+  await db.meta.put({ key: `guestMigratedTo:${userId}`, value: userId })
+  await db.meta.put({ key: "migratedForUser", value: userId })
+}
+
+/**
+ * Pendaftaran/Login pertama: Migrasi seluruh data tamu ke akun Supabase server & lokal.
  *
- * PEMBARUAN MASALAH 1 (PLAN SYNC):
- * - businessToRow tidak lagi menyertakan plan.
- * - Bila server BELUM punya baris usaha, sertakan plan: "free" hanya pada penyisipan pertama.
- * - Bila server SUDAH punya baris, jangan pernah mengirim plan. Nilai paket di server adalah sumber kebenaran.
- * - Setelah upsert, salin plan dari server ke Dexie lokal (bukan hardcode "free").
- *
- * PEMBARUAN MASALAH 2 (PENYELARASAN ID USAHA LOKAL & SERVER):
- * - Bila targetBusinessId !== biz.id, selaraskan Dexie ke ID server dalam SATU transaksi:
- *   tulis baris businesses baru ber-ID server, perbarui businessId pada seluruh documents, customers, products,
- *   lalu hapus baris businesses lama. Tidak mengubah ID baris dokumen/item/pelanggan/produk.
- *
- * PEMBARUAN MASALAH 3 (PENANDA MIGRASI):
- * - Simpan penanda di meta "migratedForUser" = userId. Bila sudah pernah migrasi untuk user ini, lewati.
+ * PERBAIKAN 1 (MIGRASI ONCE-PER-ACCOUNT):
+ * Penanda migrasi bersifat permanen per userId. Bila sudah pernah migrasi untuk userId ini,
+ * migrasi TIDAK PERNAH berjalan lagi, berapa pun banyak data tamu yang ada.
  */
 export async function migrateGuestToAccount(userId: string): Promise<void> {
-  // MASALAH 3: Periksa penanda migratedForUser di meta
-  const migratedEntry = await db.meta.get("migratedForUser")
-  if (migratedEntry && migratedEntry.value === userId) {
+  if (await isUserMigrated(userId)) {
     return
   }
 
@@ -446,8 +450,8 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
       }
     }
 
-    // MASALAH 3: Tandai bahwa migrasi telah berhasil dilakukan untuk user ini
-    await db.meta.put({ key: "migratedForUser", value: userId })
+    // PERBAIKAN 1: Tandai permanen bahwa migrasi telah berhasil dilakukan untuk user ini
+    await markUserAsMigrated(userId)
   } finally {
     isMigrating = false
   }

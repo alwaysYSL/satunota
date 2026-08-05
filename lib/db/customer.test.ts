@@ -143,4 +143,37 @@ describe("Customer Operations & Schema", () => {
     const totalCount = (await db.customers.toArray()).filter((c) => !c.deletedAt)
     expect(totalCount).toHaveLength(1)
   })
+
+  it("6. PERBAIKAN 1: auto-save TIDAK PERNAH membuat pelanggan sampah; aksi eksplisit membuat pelanggan tepat 1x (idempoten)", async () => {
+    const { useEditorStore } = await import("../stores/editor-store")
+    const { saveDocument } = await import("./auto-save")
+
+    const docId = uuidv7()
+    useEditorStore.setState({
+      documentId: docId,
+      hydrated: true,
+      tipe: "nota",
+      customerNama: "ab",
+    })
+
+    // 1. Auto-save draf dengan customerNama "ab" (isExplicitAction = false default)
+    await saveDocument(useEditorStore.getState())
+
+    // Verifikasi TIDAK ADA pelanggan baru yang dibuat di db.customers
+    let customersList = await getCustomers()
+    expect(customersList).toHaveLength(0)
+
+    // 2. Aksi eksplisit pengguna (isExplicitAction = true)
+    await saveDocument(useEditorStore.getState(), true)
+
+    // Verifikasi pelanggan baru "ab" dibuat tepat satu kali
+    customersList = await getCustomers()
+    expect(customersList).toHaveLength(1)
+    expect(customersList[0].nama).toBe("ab")
+
+    // 3. Aksi eksplisit diulang -> idempoten, tetap satu pelanggan
+    await saveDocument(useEditorStore.getState(), true)
+    customersList = await getCustomers()
+    expect(customersList).toHaveLength(1)
+  })
 })

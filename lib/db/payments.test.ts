@@ -162,4 +162,79 @@ describe("Payments & Status Derivation (SRS 5.6)", () => {
     expect(docInDb!.sisa).toBe(50000)
     expect(docInDb!.status).toBe("terkirim")
   })
+
+  it("4. PERBAIKAN 2: jika dibayar > 0, status tidak dapat diputar kembali ke terkirim", async () => {
+    const { updateDocumentStatus } = await import("./documents")
+    const docId = uuidv7()
+    const now = new Date().toISOString()
+
+    const doc: LocalDocument = {
+      id: docId,
+      ownerId,
+      businessId: "biz-1",
+      tipe: "invoice",
+      nomor: "INV/2608/0099",
+      tanggal: "2026-08-05",
+      dueDate: "2026-08-12",
+      customerId: null,
+      customerNama: "Budi",
+      diterimaDari: null,
+      status: "draf",
+      diskonTipe: "nominal",
+      diskonNilai: 0,
+      pajakPersen: 0,
+      pajakInklusif: false,
+      ongkir: 0,
+      biayaLain: 0,
+      pembulatanAktif: false,
+      subtotal: 100000,
+      diskonNominal: 0,
+      pajakNominal: 0,
+      pembulatanNominal: 0,
+      total: 100000,
+      dibayar: 0,
+      sisa: 100000,
+      catatan: null,
+      syarat: null,
+      sourceDocumentId: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    }
+
+    await db.documents.add(doc)
+
+    // 1. Invoice draf tanpa pembayaran -> tandai terkirim berhasil
+    await updateDocumentStatus(docId, "terkirim")
+    let docInDb = await db.documents.get(docId)
+    expect(docInDb!.status).toBe("terkirim")
+
+    // 2. Catat pembayaran sebagian Rp 30.000 -> status berubah jadi 'sebagian'
+    await addPayment(docId, {
+      tanggal: "2026-08-05",
+      metode: "tunai",
+      jumlah: 30000,
+    })
+    docInDb = await db.documents.get(docId)
+    expect(docInDb!.status).toBe("sebagian")
+
+    // 3. Coba paksa ubah status ke 'terkirim' -> DITOLAK, status tetap 'sebagian'
+    await updateDocumentStatus(docId, "terkirim")
+    docInDb = await db.documents.get(docId)
+    expect(docInDb!.status).toBe("sebagian")
+
+    // 4. Catat pelunasan Rp 70.000 -> status 'lunas'
+    await addPayment(docId, {
+      tanggal: "2026-08-05",
+      metode: "transfer",
+      jumlah: 70000,
+    })
+    docInDb = await db.documents.get(docId)
+    expect(docInDb!.status).toBe("lunas")
+
+    // 5. Coba paksa ubah status ke 'terkirim' saat lunas -> DITOLAK, status tetap 'lunas'
+    await updateDocumentStatus(docId, "terkirim")
+    docInDb = await db.documents.get(docId)
+    expect(docInDb!.status).toBe("lunas")
+  })
 })

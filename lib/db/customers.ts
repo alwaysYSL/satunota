@@ -88,13 +88,37 @@ export async function deleteCustomer(id: string): Promise<void> {
 }
 
 /**
- * Saat dokumen disimpan: bila customerNama terisi dan belum ada pelanggan
- * dengan nama yang sama (case-insensitive, trim), buat pelanggan baru otomatis dan tautkan customerId.
+ * Mencari pelanggan eksis berdasarkan nama (tanpa membuat baru).
+ */
+export async function findCustomerByName(
+  customerNama: string | null | undefined,
+): Promise<LocalCustomer | null> {
+  if (!customerNama) return null
+  const trimmed = customerNama.trim()
+  if (!trimmed) return null
+
+  const ownerId = await getActiveOwnerId()
+  const normalized = normalizeCustomerName(trimmed)
+
+  const allCustomers = await db.customers
+    .where("ownerId")
+    .equals(ownerId)
+    .toArray()
+
+  const active = allCustomers.filter((c) => !c.deletedAt)
+  return active.find((c) => normalizeCustomerName(c.nama) === normalized) || null
+}
+
+/**
+ * Dipanggil HANYA saat aksi eksplisit pengguna atau transisi draf -> non-draf:
+ * bila customerNama terisi dan belum ada pelanggan dengan nama yang sama,
+ * buat pelanggan baru otomatis dan tautkan customerId. Idempoten.
  */
 export async function ensureCustomerFromDocument(
-  customerNama: string,
+  customerNama: string | null | undefined,
   businessId: string,
 ): Promise<string | null> {
+  if (!customerNama) return null
   const trimmed = customerNama.trim()
   if (!trimmed) return null
 

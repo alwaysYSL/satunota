@@ -30,11 +30,14 @@ export function calculateDisplayStatus(doc: LocalDocument): DisplayStatus {
   return statusTampil(doc, todayISO())
 }
 
+import { ensureCustomerFromDocument } from "./customers"
+
 /**
  * Perbarui status dokumen ke 'terkirim' atau 'lunas' (MASALAH A).
  * - "Tandai lunas" mengisi dibayar = total dan sisa = 0.
  * - Status 'jatuh_tempo' TIDAK boleh pernah ditulis ke kolom status.
  * - Tidak menyentuh nextSeq, docCount, atau activeDraftId.
+ * - Transisi draf -> non-draf menjalankan ensureCustomerFromDocument jika customerNama terisi.
  */
 export async function updateDocumentStatus(
   documentId: string,
@@ -42,15 +45,25 @@ export async function updateDocumentStatus(
 ): Promise<void> {
   let updatedTotal: number | null = null
 
-  await db.transaction("rw", db.documents, async () => {
+  await db.transaction("rw", [db.documents, db.customers, db.meta], async () => {
     const doc = await db.documents.get(documentId)
     if (!doc || doc.deletedAt !== null) return
     if (doc.tipe === "kwitansi") return // Kwitansi selalu lunas
+
+    // PERBAIKAN 2: Jika dibayar > 0, status diturunkan dari pembayaran (sebagian/lunas). Tolak memundurkan ke terkirim.
+    if (newStatus === "terkirim" && doc.dibayar > 0) return
 
     const now = new Date().toISOString()
     const updates: Partial<LocalDocument> = {
       status: newStatus,
       updatedAt: now,
+    }
+
+    if (doc.customerNama && doc.customerNama.trim() !== "") {
+      const custId = await ensureCustomerFromDocument(doc.customerNama, doc.businessId)
+      if (custId) {
+        updates.customerId = custId
+      }
     }
 
     if (newStatus === "lunas") {

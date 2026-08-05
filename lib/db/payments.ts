@@ -68,6 +68,8 @@ export async function getPayments(documentId: string): Promise<LocalPayment[]> {
     .sort((a, b) => b.tanggal.localeCompare(a.tanggal) || b.createdAt.localeCompare(a.createdAt))
 }
 
+import { ensureCustomerFromDocument } from "./customers"
+
 /**
  * Menambahkan pembayaran baru untuk dokumen dan memperbarui dibayar, sisa, serta status.
  */
@@ -96,7 +98,7 @@ export async function addPayment(
 
   let updatedDibayar = 0
 
-  await db.transaction("rw", [db.documents, db.payments], async () => {
+  await db.transaction("rw", [db.documents, db.payments, db.customers, db.meta], async () => {
     const doc = await db.documents.get(documentId)
     if (!doc || doc.deletedAt !== null) {
       throw new Error("Dokumen tidak ditemukan")
@@ -118,12 +120,21 @@ export async function addPayment(
       totalDibayar,
     )
 
-    await db.documents.update(documentId, {
+    const updates: Partial<LocalDocument> = {
       dibayar: totalDibayar,
       sisa,
       status: nextStatus,
       updatedAt: now,
-    })
+    }
+
+    if (doc.customerNama && doc.customerNama.trim() !== "") {
+      const custId = await ensureCustomerFromDocument(doc.customerNama, doc.businessId)
+      if (custId) {
+        updates.customerId = custId
+      }
+    }
+
+    await db.documents.update(documentId, updates)
 
     updatedDibayar = totalDibayar
   })

@@ -6,7 +6,7 @@ import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
 import { ensureNomorForDraft } from "./doc-numbering-owner"
 import { getActiveOwnerId } from "./owner"
-import { ensureCustomerFromDocument } from "./customers"
+import { ensureCustomerFromDocument, findCustomerByName } from "./customers"
 import { calc, type CalcInput } from "@/lib/calc"
 import type { EditorState } from "@/lib/stores/editor-store"
 
@@ -53,13 +53,13 @@ function buildCalcInputFromState(s: EditorState): CalcInput {
 /**
  * Simpan dokumen dari editor ke Dexie dalam SATU transaksi.
  *
- * PERUBAHAN PEMILIK TUNGGAL NOMOR:
- * saveDocument tidak lagi pernah memutuskan nomor (semua cabang penentuan nomor dihapus).
- * Ia memakai state.nomor apa adanya bila state.nomorManual true, dan sebaliknya
- * memanggil ensureNomorForDraft(docId, state.tipe) SEBELUM transaksi dibuka.
+ * PERBAIKAN 1:
+ * auto-save (isExplicitAction = false) TIDAK PERNAH memanggil ensureCustomerFromDocument.
+ * ensureCustomerFromDocument hanya dipanggil bila isExplicitAction = true.
  */
 export async function saveDocument(
   state: EditorState,
+  isExplicitAction: boolean = false,
 ): Promise<SaveResult | null> {
   if (!state.hydrated || !state.documentId) {
     return null
@@ -77,13 +77,23 @@ export async function saveDocument(
     finalNomor = await ensureNomorForDraft(docId, state.tipe)
   }
 
-  // Tautkan / buat pelanggan otomatis bila customerNama diisi
+  // Tautkan pelanggan: Hanya buat pelanggan baru bila isExplicitAction = true
   let resolvedCustomerId: string | null = state.customerId
-  if (state.customerNama && state.customerNama.trim() !== "") {
-    resolvedCustomerId = await ensureCustomerFromDocument(
-      state.customerNama,
-      businessId,
-    )
+  if (isExplicitAction) {
+    if (state.customerNama && state.customerNama.trim() !== "") {
+      resolvedCustomerId = await ensureCustomerFromDocument(
+        state.customerNama,
+        businessId,
+      )
+    }
+  } else {
+    // Auto-save: JANGAN buat pelanggan baru. Hanya tautkan bila sudah ada pelanggan eksis dengan nama yang sama.
+    if (state.customerNama && state.customerNama.trim() !== "") {
+      const existing = await findCustomerByName(state.customerNama)
+      if (existing) {
+        resolvedCustomerId = existing.id
+      }
+    }
   }
 
   // Hitung angka snapshot lewat calc()

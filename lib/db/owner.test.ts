@@ -118,4 +118,111 @@ describe("Owner ID & Data Isolation", () => {
     expect(docsB).toHaveLength(1)
     expect(docsB[0].id).toBe(docB.id)
   })
+
+  it("4. PERBAIKAN 2: login owner A -> logout -> mode tamu / login owner B -> masing-masing sesi hanya melihat data miliknya", async () => {
+    const ownerA = "user-owner-A"
+    const ownerB = "user-owner-B"
+    const now = new Date().toISOString()
+
+    // 1. Login owner A & buat dokumen milik owner A
+    await updateLastUserId(ownerA)
+    const activeA = await getActiveOwnerId()
+    expect(activeA).toBe(ownerA)
+
+    const docA: LocalDocument = {
+      id: uuidv7(),
+      ownerId: ownerA,
+      businessId: "biz-a",
+      tipe: "nota",
+      nomor: "NT/001",
+      tanggal: "2026-08-05",
+      dueDate: null,
+      customerId: null,
+      customerNama: "Pelanggan Owner A",
+      diterimaDari: null,
+      status: "draf",
+      diskonTipe: "nominal",
+      diskonNilai: 0,
+      pajakPersen: 0,
+      pajakInklusif: false,
+      ongkir: 0,
+      biayaLain: 0,
+      pembulatanAktif: false,
+      subtotal: 10000,
+      diskonNominal: 0,
+      pajakNominal: 0,
+      pembulatanNominal: 0,
+      total: 10000,
+      dibayar: 0,
+      sisa: 10000,
+      catatan: null,
+      syarat: null,
+      sourceDocumentId: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    }
+    await db.documents.add(docA)
+
+    // 2. Logout -> updateLastUserId(null) -> beralih ke mode guest
+    await updateLastUserId(null)
+    const guestOwnerId = await getActiveOwnerId()
+    expect(guestOwnerId).not.toBe(ownerA)
+
+    // Buat dokumen milik guest
+    const docGuest: LocalDocument = {
+      id: uuidv7(),
+      ownerId: guestOwnerId,
+      businessId: "biz-guest",
+      tipe: "nota",
+      nomor: "NT/002",
+      tanggal: "2026-08-05",
+      dueDate: null,
+      customerId: null,
+      customerNama: "Pelanggan Guest",
+      diterimaDari: null,
+      status: "draf",
+      diskonTipe: "nominal",
+      diskonNilai: 0,
+      pajakPersen: 0,
+      pajakInklusif: false,
+      ongkir: 0,
+      biayaLain: 0,
+      pembulatanAktif: false,
+      subtotal: 5000,
+      diskonNominal: 0,
+      pajakNominal: 0,
+      pembulatanNominal: 0,
+      total: 5000,
+      dibayar: 0,
+      sisa: 5000,
+      catatan: null,
+      syarat: null,
+      sourceDocumentId: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    }
+    await db.documents.add(docGuest)
+
+    // Mode guest HANYA melihat docGuest
+    const guestDocs = await db.documents.where("ownerId").equals(guestOwnerId).toArray()
+    expect(guestDocs).toHaveLength(1)
+    expect(guestDocs[0].id).toBe(docGuest.id)
+
+    // 3. Login owner B -> updateLastUserId(ownerB)
+    await updateLastUserId(ownerB)
+    const activeB = await getActiveOwnerId()
+    expect(activeB).toBe(ownerB)
+
+    // Sesi owner B TIDAK melihat data owner A maupun data guest
+    const bDocs = await db.documents.where("ownerId").equals(ownerB).toArray()
+    expect(bDocs).toHaveLength(0)
+
+    // Switch kembali ke owner A -> HANYA melihat docA
+    await updateLastUserId(ownerA)
+    const aDocs = await db.documents.where("ownerId").equals(await getActiveOwnerId()).toArray()
+    expect(aDocs).toHaveLength(1)
+    expect(aDocs[0].id).toBe(docA.id)
+  })
 })

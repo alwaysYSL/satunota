@@ -17,9 +17,11 @@ import {
   X,
   Send,
   CheckCircle2,
+  LogOut,
 } from "lucide-react"
 import { db, type LocalDocument } from "@/lib/db/local"
-import { getActiveOwnerId } from "@/lib/db/owner"
+import { getActiveOwnerId, updateLastUserId } from "@/lib/db/owner"
+import { createClient } from "@/lib/supabase/client"
 import { statusTampil, type DisplayStatus } from "@/lib/status"
 import {
   calculateDisplayStatus,
@@ -42,16 +44,39 @@ export default function HistoryPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("semua")
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const today = new Date().toISOString().split("T")[0]
+
+  // Status auth Supabase
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) {
+        setIsLoggedIn(true)
+      } else {
+        setIsLoggedIn(false)
+      }
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsLoggedIn(Boolean(session?.user))
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   // Subscription Dexie live query memfilter ownerId aktif
   const documents = useLiveQuery(async () => {
     const ownerId = await getActiveOwnerId()
     const all = await db.documents.where("ownerId").equals(ownerId).toArray()
     return all.filter((d) => !d.deletedAt)
-  }, [])
+  }, [isLoggedIn])
 
   // Close dropdown menu on click outside
   useEffect(() => {
@@ -67,6 +92,18 @@ export default function HistoryPage() {
   function showToast(msg: string) {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 3000)
+  }
+
+  async function handleLogout() {
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      await updateLastUserId(null)
+      setIsLoggedIn(false)
+      showToast("Berhasil keluar dari akun")
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err))
+    }
   }
 
   // Filter dokumen
@@ -192,14 +229,27 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCreateNew}
-          className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-[13px] font-medium rounded-md hover:bg-brand-hover transition-colors min-h-[44px]"
-        >
-          <Plus className="size-4" />
-          <span>Buat Baru</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {isLoggedIn && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-2 bg-bg-subtle text-fg-secondary hover:text-danger hover:bg-danger-bg text-[13px] font-medium rounded-md transition-colors min-h-[44px]"
+            >
+              <LogOut className="size-4" />
+              <span>Keluar</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCreateNew}
+            className="flex items-center gap-1.5 px-3 py-2 bg-brand text-white text-[13px] font-medium rounded-md hover:bg-brand-hover transition-colors min-h-[44px]"
+          >
+            <Plus className="size-4" />
+            <span>Buat Baru</span>
+          </button>
+        </div>
       </div>
 
       {/* Baris Pencarian & Filter (DESIGN §7) */}
@@ -418,7 +468,7 @@ export default function HistoryPage() {
                               {/* Aksi Status Minimal (MASALAH A) */}
                               {doc.tipe !== "kwitansi" && (
                                 <>
-                                  {doc.status !== "terkirim" && doc.status !== "lunas" && (
+                                  {doc.status === "draf" && doc.dibayar === 0 && (
                                     <button
                                       type="button"
                                       onClick={() => handleStatusUpdate(doc.id, "terkirim")}

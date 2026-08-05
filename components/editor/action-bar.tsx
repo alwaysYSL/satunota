@@ -7,20 +7,24 @@ import { useCalcResult, useEditorStore } from "@/lib/stores/editor-store"
 import { formatRupiah } from "@/lib/format"
 import { ShareSheet } from "./share-sheet"
 
+import { saveDocument } from "@/lib/db/auto-save"
+
 export function ActionBar() {
   const cr = useCalcResult()
   const setShowPreview = useEditorStore((s) => s.setShowPreview)
   const validateDocument = useEditorStore((s) => s.validateDocument)
   const [showShare, setShowShare] = React.useState(false)
 
-  const handlePreview = () => {
+  const handlePreview = async () => {
     if (validateDocument()) {
+      await saveDocument(useEditorStore.getState(), true)
       setShowPreview(true)
     }
   }
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (validateDocument()) {
+      await saveDocument(useEditorStore.getState(), true)
       setShowShare(true)
     }
   }

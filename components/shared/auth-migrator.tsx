@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { migrateGuestToAccount } from "@/lib/db/migrate-guest"
+import { migrateGuestToAccount, isUserMigrated } from "@/lib/db/migrate-guest"
 import { db } from "@/lib/db/local"
 import { updateLastUserId } from "@/lib/db/owner"
 import { AlertCircle, RefreshCw } from "lucide-react"
@@ -12,7 +12,7 @@ import { AlertCircle, RefreshCw } from "lucide-react"
  * secara otomatis begitu sesi autentikasi Supabase terbentuk.
  *
  * FITUR (MASALAH 3):
- * - Memeriksa penanda "migratedForUser" di db.meta. Melewati migrasi bila sudah pernah migrasi.
+ * - Memeriksa penanda permanen via isUserMigrated. Melewati migrasi bila sudah pernah migrasi.
  * - Bila navigator.onLine bernilai false, JANGAN jalankan migrasi dan JANGAN tampilkan spanduk galat.
  *   Menyediakan listener peristiwa "online" untuk menjalankan migrasi saat koneksi kembali.
  * - Menampilkan spanduk galat dan tombol Coba Lagi hanya untuk kegagalan nyata saat daring.
@@ -23,14 +23,13 @@ export function AuthMigrator() {
   const [userId, setUserId] = useState<string | null>(null)
 
   const runMigration = useCallback(async (uid: string) => {
-    // MASALAH 3: Bila offline, jangan jalankan dan jangan tampilkan spanduk galat
+    // Bila offline, jangan jalankan dan jangan tampilkan spanduk galat
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       return
     }
 
     // Periksa apakah user ini sudah pernah dimigrasi
-    const migratedEntry = await db.meta.get("migratedForUser")
-    if (migratedEntry && migratedEntry.value === uid) {
+    if (await isUserMigrated(uid)) {
       return
     }
 
