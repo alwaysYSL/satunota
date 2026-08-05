@@ -105,6 +105,7 @@ function makeDocument(
 ): LocalDocument {
   return {
     id: uuidv7(),
+    ownerId: businessId,
     businessId,
     tipe: "nota",
     nomor: "NT/2608/0001",
@@ -407,10 +408,12 @@ describe("Tes penjaga kunci kolom database Postgres (snake_case)", () => {
   it("paymentToRow hanya menghasilkan kunci yang terdaftar di schema Postgres payments", () => {
     const row = paymentToRow({
       id: uuidv7(),
+      ownerId: uuidv7(),
       documentId: uuidv7(),
       tanggal: "2026-08-04",
       metode: "tunai",
       jumlah: 10000,
+      catatan: null,
       createdAt: now,
     })
     for (const key of Object.keys(row)) {

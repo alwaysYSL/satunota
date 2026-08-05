@@ -7,14 +7,11 @@ import { ensureGuestBusiness } from "./guest"
 import { reserveDocNomor } from "./doc-numbering"
 import { createNewDocumentDraft, openDocumentDraft } from "./draft"
 import { cancelPendingAutoSave } from "./save-queue"
+import { getActiveOwnerId } from "./owner"
+import { statusTampil, type DisplayStatus } from "@/lib/status"
 import { useEditorStore } from "@/lib/stores/editor-store"
 
-export type DisplayStatus =
-  | "draf"
-  | "terkirim"
-  | "sebagian"
-  | "lunas"
-  | "jatuh_tempo"
+export type { DisplayStatus }
 
 function todayISO(): string {
   const d = new Date()
@@ -30,12 +27,7 @@ function todayISO(): string {
  * dan dueDate < hari ini. Jangan pernah menyimpannya ke kolom status database!
  */
 export function calculateDisplayStatus(doc: LocalDocument): DisplayStatus {
-  if (doc.status === "terkirim" && doc.dueDate) {
-    if (doc.dueDate < todayISO()) {
-      return "jatuh_tempo"
-    }
-  }
-  return doc.status
+  return statusTampil(doc, todayISO())
 }
 
 /**
@@ -114,7 +106,8 @@ export async function softDeleteDocument(documentId: string): Promise<void> {
     const storeDocId = useEditorStore.getState().documentId
 
     if (activeDraftEntry?.value === documentId || storeDocId === documentId) {
-      const nonDeletedDocs = (await db.documents.toArray())
+      const ownerId = await getActiveOwnerId()
+      const nonDeletedDocs = (await db.documents.where("ownerId").equals(ownerId).toArray())
         .filter((d) => !d.deletedAt && d.id !== documentId)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 
@@ -159,6 +152,7 @@ export async function duplicateDocument(
     .sortBy("urutan")
 
   const businessId = await ensureGuestBusiness()
+  const ownerId = await getActiveOwnerId()
   const newDocId = uuidv7()
   const now = new Date().toISOString()
 
@@ -178,6 +172,7 @@ export async function duplicateDocument(
       const newDoc: LocalDocument = {
         ...sourceDoc,
         id: newDocId,
+        ownerId,
         businessId,
         nomor: newNomor,
         tanggal: todayISO(),
@@ -241,6 +236,7 @@ export async function convertInvoiceToKwitansi(
     .sortBy("urutan")
 
   const businessId = await ensureGuestBusiness()
+  const ownerId = await getActiveOwnerId()
   const kwitansiId = uuidv7()
   const now = new Date().toISOString()
 
@@ -259,6 +255,7 @@ export async function convertInvoiceToKwitansi(
 
       const kwitansiDoc: LocalDocument = {
         id: kwitansiId,
+        ownerId,
         businessId,
         tipe: "kwitansi",
         nomor: kwitansiNomor,

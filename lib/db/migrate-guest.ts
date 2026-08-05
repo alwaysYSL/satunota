@@ -336,52 +336,81 @@ export async function migrateGuestToAccount(userId: string): Promise<void> {
 
       const serverPlan = (serverBizData?.plan as "guest" | "free" | "pro") || "free"
 
-      // MASALAH 2: Bila targetBusinessId !== biz.id, selaraskan Dexie ke ID server dalam SATU transaksi
-      if (targetBusinessId !== biz.id) {
-        await db.transaction(
-          "rw",
-          [db.businesses, db.documents, db.customers, db.products],
-          async () => {
+      // SESI 6A: Selaraskan ID usaha server, ownerId, dan lastUserId dalam SATU transaksi lokal
+      await db.transaction(
+        "rw",
+        [db.businesses, db.documents, db.customers, db.products, db.payments, db.meta],
+        async () => {
+          if (targetBusinessId !== biz.id) {
             const oldBiz = await db.businesses.get(biz.id)
             if (oldBiz) {
-              // Tulis baris businesses baru ber-ID server dengan plan dari server
               await db.businesses.put({
                 ...oldBiz,
                 id: targetBusinessId,
                 userId,
                 plan: serverPlan,
               })
-
-              // Perbarui businessId pada seluruh baris documents
-              const docs = await db.documents.where("businessId").equals(biz.id).toArray()
-              for (const d of docs) {
-                await db.documents.update(d.id, { businessId: targetBusinessId })
-              }
-
-              // Perbarui businessId pada seluruh baris customers
-              const custs = await db.customers.where("businessId").equals(biz.id).toArray()
-              for (const c of custs) {
-                await db.customers.update(c.id, { businessId: targetBusinessId })
-              }
-
-              // Perbarui businessId pada seluruh baris products
-              const prods = await db.products.where("businessId").equals(biz.id).toArray()
-              for (const p of prods) {
-                await db.products.update(p.id, { businessId: targetBusinessId })
-              }
-
-              // Hapus baris businesses lama
               await db.businesses.delete(biz.id)
             }
-          },
-        )
-      } else {
-        // ID sudah sama, cukup perbarui userId dan plan dari server
-        await db.businesses.update(biz.id, {
-          userId,
-          plan: serverPlan,
-        })
-      }
+          } else {
+            await db.businesses.update(biz.id, {
+              userId,
+              plan: serverPlan,
+            })
+          }
+
+          // Perbarui businessId dan ownerId pada seluruh baris documents
+          const docs = await db.documents
+            .where("businessId")
+            .equals(biz.id)
+            .or("businessId")
+            .equals(targetBusinessId)
+            .toArray()
+          for (const d of docs) {
+            await db.documents.update(d.id, {
+              businessId: targetBusinessId,
+              ownerId: userId,
+            })
+          }
+
+          // Perbarui businessId dan ownerId pada seluruh baris customers
+          const custs = await db.customers
+            .where("businessId")
+            .equals(biz.id)
+            .or("businessId")
+            .equals(targetBusinessId)
+            .toArray()
+          for (const c of custs) {
+            await db.customers.update(c.id, {
+              businessId: targetBusinessId,
+              ownerId: userId,
+            })
+          }
+
+          // Perbarui businessId pada seluruh baris products
+          const prods = await db.products
+            .where("businessId")
+            .equals(biz.id)
+            .or("businessId")
+            .equals(targetBusinessId)
+            .toArray()
+          for (const p of prods) {
+            await db.products.update(p.id, { businessId: targetBusinessId })
+          }
+
+          // Perbarui ownerId pada seluruh baris payments
+          const docIds = new Set(docs.map((d) => d.id))
+          const payments = await db.payments.toArray()
+          for (const pay of payments) {
+            if (docIds.has(pay.documentId) || pay.ownerId !== userId) {
+              await db.payments.update(pay.id, { ownerId: userId })
+            }
+          }
+
+          // Perbarui meta.lastUserId menjadi userId
+          await db.meta.put({ key: "lastUserId", value: userId })
+        },
+      )
     } else {
       // Jika tidak ada usaha lokal sama sekali (misal login di browser baru)
       if (existingServerBiz) {

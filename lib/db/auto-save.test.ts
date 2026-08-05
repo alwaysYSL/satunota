@@ -315,10 +315,10 @@ describe("Penyimpanan lokal & Auto-save (Hari 4A & 4B Fixes)", () => {
       hydrated: true,
       tipe: "invoice",
       dueDate: "2026-08-30",
-      status: "terkirim",
     })
 
     await saveDocument(useEditorStore.getState())
+    await db.documents.update(invoiceId, { status: "terkirim" })
 
     // Mencoba konversi invoice terkirim (belum lunas) ke kwitansi
     await expect(convertInvoiceToKwitansi(invoiceId)).rejects.toThrow(

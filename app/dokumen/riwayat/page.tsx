@@ -19,13 +19,14 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { db, type LocalDocument } from "@/lib/db/local"
+import { getActiveOwnerId } from "@/lib/db/owner"
+import { statusTampil, type DisplayStatus } from "@/lib/status"
 import {
   calculateDisplayStatus,
   softDeleteDocument,
   duplicateDocument,
   convertInvoiceToKwitansi,
   updateDocumentStatus,
-  type DisplayStatus,
 } from "@/lib/db/documents"
 import { createNewDocumentDraft, openDocumentDraft } from "@/lib/db/draft"
 import { formatRupiah, formatTanggal } from "@/lib/format"
@@ -43,9 +44,12 @@ export default function HistoryPage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // Subscription Dexie live query
+  const today = new Date().toISOString().split("T")[0]
+
+  // Subscription Dexie live query memfilter ownerId aktif
   const documents = useLiveQuery(async () => {
-    const all = await db.documents.toArray()
+    const ownerId = await getActiveOwnerId()
+    const all = await db.documents.where("ownerId").equals(ownerId).toArray()
     return all.filter((d) => !d.deletedAt)
   }, [])
 
@@ -70,7 +74,7 @@ export default function HistoryPage() {
     .filter((doc) => {
       if (typeFilter !== "semua" && doc.tipe !== typeFilter) return false
 
-      const displayStatus = calculateDisplayStatus(doc)
+      const displayStatus = statusTampil(doc, today)
       if (statusFilter !== "semua" && displayStatus !== statusFilter) return false
 
       if (search.trim() !== "") {
@@ -321,7 +325,7 @@ export default function HistoryPage() {
               {/* Daftar Kartu Dokumen dalam Kelompok */}
               <div className="flex flex-col gap-2">
                 {docs.map((doc) => {
-                  const displayStatus = calculateDisplayStatus(doc)
+                  const displayStatus = statusTampil(doc, today)
 
                   return (
                     <div

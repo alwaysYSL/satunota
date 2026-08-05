@@ -5,6 +5,8 @@
 import { db, type LocalDocument, type LocalDocumentItem } from "./local"
 import { ensureGuestBusiness } from "./guest"
 import { ensureNomorForDraft } from "./doc-numbering-owner"
+import { getActiveOwnerId } from "./owner"
+import { ensureCustomerFromDocument } from "./customers"
 import { calc, type CalcInput } from "@/lib/calc"
 import type { EditorState } from "@/lib/stores/editor-store"
 
@@ -64,6 +66,7 @@ export async function saveDocument(
   }
 
   const businessId = await ensureGuestBusiness()
+  const ownerId = await getActiveOwnerId()
   const docId = state.documentId
 
   // Dapatkan nomor dari pemilik keputusan nomor tunggal sebelum transaksi
@@ -72,6 +75,15 @@ export async function saveDocument(
     finalNomor = state.nomor
   } else {
     finalNomor = await ensureNomorForDraft(docId, state.tipe)
+  }
+
+  // Tautkan / buat pelanggan otomatis bila customerNama diisi
+  let resolvedCustomerId: string | null = state.customerId
+  if (state.customerNama && state.customerNama.trim() !== "") {
+    resolvedCustomerId = await ensureCustomerFromDocument(
+      state.customerNama,
+      businessId,
+    )
   }
 
   // Hitung angka snapshot lewat calc()
@@ -85,7 +97,7 @@ export async function saveDocument(
   // Eksekusi penulisan identitas usaha, dokumen, item, dan meta dalam SATU transaksi Dexie
   await db.transaction(
     "rw",
-    [db.businesses, db.documents, db.documentItems, db.meta],
+    [db.businesses, db.documents, db.documentItems, db.customers, db.meta],
     async () => {
       const existingDoc = await db.documents.get(docId)
 
@@ -131,8 +143,6 @@ export async function saveDocument(
         finalStatus = "draf"
       }
 
-      // Pertahankan customerId & sourceDocumentId yang sudah ada jika tipe sama
-      const finalCustomerId = existingDoc ? existingDoc.customerId : null
       const finalSourceDocumentId =
         existingDoc && existingDoc.tipe === state.tipe
           ? existingDoc.sourceDocumentId
@@ -140,12 +150,13 @@ export async function saveDocument(
 
       const doc: LocalDocument = {
         id: docId,
+        ownerId,
         businessId,
         tipe: state.tipe,
         nomor: finalNomor,
         tanggal: state.tanggal,
         dueDate: state.dueDate,
-        customerId: finalCustomerId,
+        customerId: resolvedCustomerId,
         customerNama: state.customerNama || null,
         diterimaDari: state.diterimaDari || null,
         status: finalStatus,

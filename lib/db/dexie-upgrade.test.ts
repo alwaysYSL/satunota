@@ -99,12 +99,12 @@ describe("Dexie upgrade v1 → v2", () => {
       .version(2)
       .stores({
         businesses: "id, userId, updatedAt",
-        customers: "id, businessId, nama, updatedAt, deletedAt",
+        customers: "id, ownerId, businessId, nama, updatedAt, deletedAt",
         products: "id, businessId, nama, updatedAt, deletedAt",
         documents:
-          "id, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
+          "id, ownerId, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
         documentItems: "id, documentId, urutan",
-        payments: "id, documentId, tanggal",
+        payments: "id, ownerId, documentId, tanggal",
         outbox: "id, entity, entityId, createdAt, attempts",
         meta: "key",
       })
@@ -120,9 +120,39 @@ describe("Dexie upgrade v1 → v2", () => {
               biz.plan = "guest"
             }
           })
+
+        const lastUserEntry = await tx.table("meta").get("lastUserId")
+        let fallbackOwnerId: string | null = null
+        if (
+          lastUserEntry &&
+          typeof lastUserEntry.value === "string" &&
+          lastUserEntry.value !== "guest"
+        ) {
+          fallbackOwnerId = lastUserEntry.value
+        } else {
+          const guestEntry = await tx.table("meta").get("guestId")
+          if (guestEntry && typeof guestEntry.value === "string") {
+            fallbackOwnerId = guestEntry.value
+          } else {
+            const firstBiz = await tx.table("businesses").toCollection().first()
+            if (firstBiz && typeof firstBiz.userId === "string" && firstBiz.userId) {
+              fallbackOwnerId = firstBiz.userId
+            } else if (firstBiz && typeof firstBiz.id === "string") {
+              fallbackOwnerId = firstBiz.id
+            } else {
+              fallbackOwnerId = "guest"
+            }
+          }
+        }
+
+        await tx.table("documents").toCollection().modify((doc: Record<string, unknown>) => {
+          if (!doc.ownerId || typeof doc.ownerId !== "string") {
+            doc.ownerId = fallbackOwnerId
+          }
+        })
       })
 
-    // 3. Verifikasi data masih ada
+    // 3. Verifikasi data masih ada & ownerId terisi
     const biz = await dbV2.table("businesses").get(bizId)
     expect(biz).toBeDefined()
     expect(biz!.nama).toBe("Warung Test")
@@ -131,6 +161,7 @@ describe("Dexie upgrade v1 → v2", () => {
     const doc = await dbV2.table("documents").get(docId)
     expect(doc).toBeDefined()
     expect(doc!.nomor).toBe("NT/2608/0001")
+    expect(doc!.ownerId).toBe(bizId) // Fallback to biz.id
 
     const seq = await dbV2.table("meta").get("nextSeq:nota")
     expect(seq).toBeDefined()

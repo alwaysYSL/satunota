@@ -30,6 +30,7 @@ export type LocalBusiness = {
 
 export type LocalCustomer = {
   id: string
+  ownerId: string
   businessId: string
   nama: string
   telepon: string | null
@@ -55,6 +56,7 @@ export type LocalProduct = {
 
 export type LocalDocument = {
   id: string
+  ownerId: string
   businessId: string
   tipe: "nota" | "invoice" | "kwitansi"
   nomor: string
@@ -100,6 +102,7 @@ export type LocalDocumentItem = {
 
 export type LocalPayment = {
   id: string
+  ownerId: string
   documentId: string
   tanggal: string
   metode: "tunai" | "transfer" | "qris" | "ewallet" | "lainnya"
@@ -149,25 +152,71 @@ db.version(1).stores({
   meta:          "key",
 })
 
-// v2: tambah kolom plan pada businesses. Indeks tidak berubah.
+// v2: tambah ownerId pada customers, documents, payments. Indeks ownerId disertakan.
 // JANGAN mengubah db.version(1) di atas.
 db.version(2).stores({
   businesses:    "id, userId, updatedAt",
-  customers:     "id, businessId, nama, updatedAt, deletedAt",
+  customers:     "id, ownerId, businessId, nama, updatedAt, deletedAt",
   products:      "id, businessId, nama, updatedAt, deletedAt",
-  documents:     "id, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
+  documents:     "id, ownerId, businessId, tipe, nomor, tanggal, status, updatedAt, deletedAt, [businessId+tipe]",
   documentItems: "id, documentId, urutan",
-  payments:      "id, documentId, tanggal",
+  payments:      "id, ownerId, documentId, tanggal",
   outbox:        "id, entity, entityId, createdAt, attempts",
   meta:          "key",
 }).upgrade(async (tx) => {
-  // Pastikan setiap businesses punya userId dan plan
+  // 1. Upgrade businesses
   await tx.table("businesses").toCollection().modify((biz: Record<string, unknown>) => {
     if (biz.userId === undefined) {
       biz.userId = null
     }
-    if ((biz as Record<string, unknown>).plan === undefined) {
-      (biz as Record<string, unknown>).plan = "guest"
+    if (biz.plan === undefined) {
+      biz.plan = "guest"
+    }
+  })
+
+  // 2. Tentukan ownerId aktif dengan fallback bertingkat:
+  // meta.lastUserId -> guestId -> business.userId -> business.id -> "guest"
+  const lastUserEntry = await tx.table("meta").get("lastUserId")
+  let fallbackOwnerId: string | null = null
+
+  if (
+    lastUserEntry &&
+    typeof lastUserEntry.value === "string" &&
+    lastUserEntry.value !== "guest"
+  ) {
+    fallbackOwnerId = lastUserEntry.value
+  } else {
+    const guestEntry = await tx.table("meta").get("guestId")
+    if (guestEntry && typeof guestEntry.value === "string") {
+      fallbackOwnerId = guestEntry.value
+    } else {
+      const firstBiz = await tx.table("businesses").toCollection().first()
+      if (firstBiz && typeof firstBiz.userId === "string" && firstBiz.userId) {
+        fallbackOwnerId = firstBiz.userId
+      } else if (firstBiz && typeof firstBiz.id === "string") {
+        fallbackOwnerId = firstBiz.id
+      } else {
+        fallbackOwnerId = "guest"
+      }
+    }
+  }
+
+  // 3. Backfill ownerId pada documents, customers, payments
+  await tx.table("documents").toCollection().modify((doc: Record<string, unknown>) => {
+    if (!doc.ownerId || typeof doc.ownerId !== "string" || doc.ownerId.trim() === "") {
+      doc.ownerId = fallbackOwnerId
+    }
+  })
+
+  await tx.table("customers").toCollection().modify((cust: Record<string, unknown>) => {
+    if (!cust.ownerId || typeof cust.ownerId !== "string" || cust.ownerId.trim() === "") {
+      cust.ownerId = fallbackOwnerId
+    }
+  })
+
+  await tx.table("payments").toCollection().modify((pay: Record<string, unknown>) => {
+    if (!pay.ownerId || typeof pay.ownerId !== "string" || pay.ownerId.trim() === "") {
+      pay.ownerId = fallbackOwnerId
     }
   })
 })

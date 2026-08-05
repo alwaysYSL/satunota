@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { History } from "lucide-react"
+import { History, Users, Plus } from "lucide-react"
 import { NotionInput, NotionCurrencyInput } from "@/components/editor/notion-input"
+import { CustomerAutofillInput } from "@/components/editor/customer-autofill"
 import { DocTypeSelector } from "@/components/editor/doc-type-selector"
 import { ItemList } from "@/components/editor/item-list"
 import { ChipBar } from "@/components/editor/chip-bar"
@@ -13,7 +14,6 @@ import { useEditorStore } from "@/lib/stores/editor-store"
 import { useAutoSave } from "@/lib/hooks/use-auto-save"
 
 import { createNewDocumentDraft } from "@/lib/db/draft"
-import { Plus } from "lucide-react"
 
 export default function EditorPage() {
   // ─── Auto-save ke IndexedDB dengan debounce 500ms ─────
@@ -59,6 +59,13 @@ export default function EditorPage() {
               <Plus className="size-4" />
               <span>Buat Baru</span>
             </button>
+            <Link
+              href="/pelanggan"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+            >
+              <Users className="size-4" />
+              <span>Pelanggan</span>
+            </Link>
             <Link
               href="/dokumen/riwayat"
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
@@ -146,12 +153,7 @@ export default function EditorPage() {
             <label className="text-[13px] font-medium text-fg-secondary mb-0.5 block">
               Pelanggan
             </label>
-            <NotionInput
-              value={customerNama}
-              onChange={(v) => setField("customerNama", v)}
-              placeholder="Nama pelanggan"
-              className="text-fg"
-            />
+            <CustomerAutofillInput />
           </div>
 
           {/* Diterima dari — hanya kwitansi */}

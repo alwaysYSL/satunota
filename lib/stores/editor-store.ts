@@ -46,6 +46,7 @@ export type EditorState = {
   allocatedNomor: Partial<Record<DocType, string>>
   tanggal: string // ISO date string YYYY-MM-DD
   dueDate: string | null
+  customerId: string | null
   customerNama: string
   diterimaDari: string
   catatan: string
@@ -134,6 +135,7 @@ function initialState(): EditorState {
     allocatedNomor: {},
     tanggal: todayISO(),
     dueDate: null,
+    customerId: null,
     customerNama: "",
     diterimaDari: "",
     catatan: "",
@@ -273,6 +275,7 @@ export const useEditorStore = create<EditorState & EditorActions>((set, get) => 
       },
       tanggal: doc.tanggal,
       dueDate: doc.dueDate,
+      customerId: doc.customerId ?? null,
       customerNama: doc.customerNama ?? "",
       diterimaDari: doc.diterimaDari ?? "",
       catatan: doc.catatan ?? "",

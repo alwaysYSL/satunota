@@ -105,6 +105,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
 
     const doc1: LocalDocument = {
       id: uuidv7(),
+      ownerId: "owner-test",
       businessId: bizId,
       tipe: "nota",
       nomor: "NT/2608/9999",
@@ -138,6 +139,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
 
     const doc2: LocalDocument = {
       id: uuidv7(),
+      ownerId: "owner-test",
       businessId: bizId,
       tipe: "invoice",
       nomor: "INV/2608/0001",
@@ -171,6 +173,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
 
     const doc3: LocalDocument = {
       id: uuidv7(),
+      ownerId: "owner-test",
       businessId: bizId,
       tipe: "kwitansi",
       nomor: "KW/2608/0001",
@@ -234,6 +237,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
     const docs: LocalDocument[] = [
       {
         id: uuidv7(),
+        ownerId: "owner-test",
         businessId: bizId,
         tipe: "nota",
         nomor: "NT/001",
@@ -266,6 +270,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
       },
       {
         id: uuidv7(),
+        ownerId: "owner-test",
         businessId: bizId,
         tipe: "invoice",
         nomor: "INV/001",
@@ -316,6 +321,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
 
     const mockDoc: LocalDocument = {
       id: docId,
+      ownerId: "owner-test",
       businessId: uuidv7(),
       tipe: "invoice",
       nomor: "INV/2001/0001",
@@ -557,7 +563,6 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
       documentId: invoice1Id,
       hydrated: true,
       tipe: "invoice",
-      status: "lunas",
     })
     await saveDocument(useEditorStore.getState()) // Invoice 1 created (seq invoice -> 2)
     await db.documents.update(invoice1Id, { status: "lunas" })
@@ -583,9 +588,9 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
     const seqInvoice = await db.meta.get("nextSeq:invoice")
     const seqKwitansi = await db.meta.get("nextSeq:kwitansi")
 
-    expect((seqNota?.value ?? 1) - 1).toBe(totalNota)
-    expect((seqInvoice?.value ?? 1) - 1).toBe(totalInvoice)
-    expect((seqKwitansi?.value ?? 1) - 1).toBe(totalKwitansi)
+    expect(Number(seqNota?.value ?? 1) - 1).toBe(totalNota)
+    expect(Number(seqInvoice?.value ?? 1) - 1).toBe(totalInvoice)
+    expect(Number(seqKwitansi?.value ?? 1) - 1).toBe(totalKwitansi)
   })
 
   it("10. Tandai invoice lunas lalu konversi: berhasil, sourceDocumentId terisi, nomor memakai pola KW/, nextSeq:kwitansi naik tepat 1 (TEST WAJIB 1)", async () => {
@@ -611,7 +616,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
     await saveDocument(useEditorStore.getState())
 
     // Catat nextSeq:kwitansi sebelum konversi
-    const seqKwitansiBefore = (await db.meta.get("nextSeq:kwitansi"))?.value || 1
+    const seqKwitansiBefore = Number((await db.meta.get("nextSeq:kwitansi"))?.value || 1)
 
     // Tandai lunas via updateDocumentStatus (bukan direct db.documents.update)
     await updateDocumentStatus(invoiceId, "lunas")
@@ -631,7 +636,7 @@ describe("Tes Integrasi Hari 4B — Operasi Dokumen & Riwayat", () => {
     expect(kwitansi.status).toBe("lunas")
 
     // nextSeq:kwitansi naik tepat 1
-    const seqKwitansiAfter = (await db.meta.get("nextSeq:kwitansi"))?.value
+    const seqKwitansiAfter = Number((await db.meta.get("nextSeq:kwitansi"))?.value || 1)
     expect(seqKwitansiAfter).toBe(seqKwitansiBefore + 1)
   })
 

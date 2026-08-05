@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { migrateGuestToAccount } from "@/lib/db/migrate-guest"
 import { db } from "@/lib/db/local"
+import { updateLastUserId } from "@/lib/db/owner"
 import { AlertCircle, RefreshCw } from "lucide-react"
 
 /**
@@ -53,7 +54,10 @@ export function AuthMigrator() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) {
         setUserId(user.id)
+        updateLastUserId(user.id)
         runMigration(user.id)
+      } else {
+        updateLastUserId(null)
       }
     })
 
@@ -63,9 +67,11 @@ export function AuthMigrator() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUserId(session.user.id)
+        updateLastUserId(session.user.id)
         runMigration(session.user.id)
       } else {
         setUserId(null)
+        updateLastUserId(null)
       }
     })
 
