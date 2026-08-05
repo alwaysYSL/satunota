@@ -18,6 +18,7 @@ import {
   Send,
   CheckCircle2,
   LogOut,
+  Settings,
 } from "lucide-react"
 import { db, type LocalDocument } from "@/lib/db/local"
 import { getActiveOwnerId, updateLastUserId } from "@/lib/db/owner"
@@ -230,16 +231,13 @@ export default function HistoryPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {isLoggedIn && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-2 bg-bg-subtle text-fg-secondary hover:text-danger hover:bg-danger-bg text-[13px] font-medium rounded-md transition-colors min-h-[44px]"
-            >
-              <LogOut className="size-4" />
-              <span>Keluar</span>
-            </button>
-          )}
+          <Link
+            href="/pengaturan"
+            className="flex items-center gap-1.5 px-3 py-2 bg-bg-subtle text-fg-secondary hover:text-fg text-[13px] font-medium rounded-md transition-colors min-h-[44px]"
+          >
+            <Settings className="size-4" />
+            <span>Pengaturan</span>
+          </Link>
 
           <button
             type="button"

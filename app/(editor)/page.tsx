@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { History, Users, Plus } from "lucide-react"
+import { History, Users, Plus, Settings } from "lucide-react"
 import { NotionInput, NotionCurrencyInput } from "@/components/editor/notion-input"
 import { CustomerAutofillInput } from "@/components/editor/customer-autofill"
 import { DocTypeSelector } from "@/components/editor/doc-type-selector"
@@ -72,6 +72,14 @@ export default function EditorPage() {
             >
               <History className="size-4" />
               <span>Riwayat</span>
+            </Link>
+            <Link
+              href="/pengaturan"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-fg-secondary hover:text-fg hover:bg-bg-hover rounded-sm transition-[background-color] min-h-[44px]"
+              aria-label="Pengaturan"
+            >
+              <Settings className="size-4" />
+              <span>Pengaturan</span>
             </Link>
           </div>
         </div>

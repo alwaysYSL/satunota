@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 
 import { SwRegister } from "@/components/sw-register";
 import { AuthMigrator } from "@/components/shared/auth-migrator";
+import { RetentionBanner } from "@/components/shared/retention-banner";
 
 export default function RootLayout({
   children,
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className="min-h-dvh flex flex-col">
         <SwRegister />
         <AuthMigrator />
+        <RetentionBanner />
         {children}
       </body>
     </html>
