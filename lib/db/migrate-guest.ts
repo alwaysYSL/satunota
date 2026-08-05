@@ -20,7 +20,7 @@ let isMigrating = false
  * businessToRow TIDAK BOLEH menghasilkan field plan!
  * Nilai paket di server adalah sumber kebenaran (source of truth).
  */
-function businessToRow(biz: Record<string, unknown>, userId: string) {
+export function businessToRow(biz: Record<string, unknown>, userId: string) {
   return {
     id: biz.id,
     user_id: userId,
@@ -41,7 +41,7 @@ function businessToRow(biz: Record<string, unknown>, userId: string) {
   }
 }
 
-function customerToRow(c: Record<string, unknown>) {
+export function customerToRow(c: Record<string, unknown>) {
   return {
     id: c.id,
     business_id: c.businessId,
@@ -56,7 +56,7 @@ function customerToRow(c: Record<string, unknown>) {
   }
 }
 
-function documentToRow(d: LocalDocument) {
+export function documentToRow(d: LocalDocument) {
   // Status 'jatuh_tempo' tidak boleh ada di penyimpanan lokal/database.
   // Status tersebut hanya dihitung saat tampil di UI. Jika ditemukan di data lokal, melempar galat.
   if ((d.status as string) === "jatuh_tempo") {
@@ -81,7 +81,7 @@ function documentToRow(d: LocalDocument) {
     pajak_persen: d.pajakPersen,
     pajak_inklusif: d.pajakInklusif,
     ongkir: d.ongkir,
-    biayaLain: d.biayaLain,
+    biaya_lain: d.biayaLain,
     pembulatan_aktif: d.pembulatanAktif,
     subtotal: d.subtotal,
     diskon_nominal: d.diskonNominal,
@@ -99,7 +99,7 @@ function documentToRow(d: LocalDocument) {
   }
 }
 
-function itemToRow(item: LocalDocumentItem) {
+export function itemToRow(item: LocalDocumentItem) {
   return {
     id: item.id,
     document_id: item.documentId,
@@ -113,7 +113,7 @@ function itemToRow(item: LocalDocumentItem) {
   }
 }
 
-function paymentToRow(p: LocalPayment) {
+export function paymentToRow(p: LocalPayment) {
   return {
     id: p.id,
     document_id: p.documentId,

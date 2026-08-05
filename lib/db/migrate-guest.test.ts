@@ -60,7 +60,14 @@ import {
   type LocalPayment,
 } from "./local"
 
-import { migrateGuestToAccount } from "./migrate-guest"
+import {
+  migrateGuestToAccount,
+  businessToRow,
+  customerToRow,
+  documentToRow,
+  itemToRow,
+  paymentToRow,
+} from "./migrate-guest"
 
 // ─── Helper ────────────────────────────────────────────────
 
@@ -259,5 +266,155 @@ describe("migrateGuestToAccount", () => {
     await expect(migrateGuestToAccount(userId)).rejects.toThrow(
       "Status 'jatuh_tempo' tidak boleh disimpan di database",
     )
+  })
+})
+
+describe("Tes penjaga kunci kolom database Postgres (snake_case)", () => {
+  const BUSINESSES_COLUMNS = new Set([
+    "id",
+    "user_id",
+    "nama",
+    "logo_url",
+    "alamat",
+    "telepon",
+    "email",
+    "npwp",
+    "pola_nota",
+    "pola_invoice",
+    "pola_kwitansi",
+    "default_pajak",
+    "default_catatan",
+    "qris_url",
+    "rekening",
+    "ttd_url",
+    "plan",
+    "created_at",
+    "updated_at",
+  ])
+
+  const CUSTOMERS_COLUMNS = new Set([
+    "id",
+    "business_id",
+    "nama",
+    "telepon",
+    "alamat",
+    "email",
+    "catatan",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+  ])
+
+  const DOCUMENTS_COLUMNS = new Set([
+    "id",
+    "business_id",
+    "tipe",
+    "nomor",
+    "tanggal",
+    "due_date",
+    "customer_id",
+    "customer_nama",
+    "diterima_dari",
+    "status",
+    "diskon_tipe",
+    "diskon_nilai",
+    "pajak_persen",
+    "pajak_inklusif",
+    "ongkir",
+    "biaya_lain",
+    "pembulatan_aktif",
+    "subtotal",
+    "diskon_nominal",
+    "pajak_nominal",
+    "pembulatan_nominal",
+    "total",
+    "dibayar",
+    "sisa",
+    "catatan",
+    "syarat",
+    "source_document_id",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+  ])
+
+  const DOCUMENT_ITEMS_COLUMNS = new Set([
+    "id",
+    "document_id",
+    "urutan",
+    "nama",
+    "qty",
+    "satuan",
+    "harga_satuan",
+    "diskon_baris",
+    "subtotal",
+  ])
+
+  const PAYMENTS_COLUMNS = new Set([
+    "id",
+    "document_id",
+    "tanggal",
+    "metode",
+    "jumlah",
+    "catatan",
+    "created_at",
+  ])
+
+  it("businessToRow hanya menghasilkan kunci yang terdaftar di schema Postgres businesses", () => {
+    const row = businessToRow(makeBusiness(), userId)
+    for (const key of Object.keys(row)) {
+      expect(BUSINESSES_COLUMNS.has(key)).toBe(true)
+    }
+  })
+
+  it("customerToRow hanya menghasilkan kunci yang terdaftar di schema Postgres customers", () => {
+    const row = customerToRow({
+      id: uuidv7(),
+      businessId: uuidv7(),
+      nama: "Pelanggan A",
+      createdAt: now,
+      updatedAt: now,
+    })
+    for (const key of Object.keys(row)) {
+      expect(CUSTOMERS_COLUMNS.has(key)).toBe(true)
+    }
+  })
+
+  it("documentToRow hanya menghasilkan kunci yang terdaftar di schema Postgres documents", () => {
+    const row = documentToRow(makeDocument("biz-id"))
+    for (const key of Object.keys(row)) {
+      expect(DOCUMENTS_COLUMNS.has(key)).toBe(true)
+    }
+  })
+
+  it("itemToRow hanya menghasilkan kunci yang terdaftar di schema Postgres document_items", () => {
+    const row = itemToRow({
+      id: uuidv7(),
+      documentId: uuidv7(),
+      urutan: 1,
+      nama: "Barang A",
+      qty: 1,
+      satuan: "pcs",
+      hargaSatuan: 10000,
+      diskonBaris: 0,
+      subtotal: 10000,
+    })
+    for (const key of Object.keys(row)) {
+      expect(DOCUMENT_ITEMS_COLUMNS.has(key)).toBe(true)
+    }
+  })
+
+  it("paymentToRow hanya menghasilkan kunci yang terdaftar di schema Postgres payments", () => {
+    const row = paymentToRow({
+      id: uuidv7(),
+      documentId: uuidv7(),
+      tanggal: "2026-08-04",
+      metode: "tunai",
+      jumlah: 10000,
+      createdAt: now,
+    })
+    for (const key of Object.keys(row)) {
+      expect(PAYMENTS_COLUMNS.has(key)).toBe(true)
+    }
   })
 })
